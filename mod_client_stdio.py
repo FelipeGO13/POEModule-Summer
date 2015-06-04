@@ -242,7 +242,6 @@ def end_observation(loop):
     print("Observation ended by user interrupt...")
     # Terminate observation event loop
     loop.close()
-    requester.   observation.cancel()
     print("Observation loop ended...")
 
     # Restore event loop
@@ -333,7 +332,7 @@ def observe_impl(url=''):
     :raises RuntimeError: server responds code is unsuccessful
     """
     global rate
-    global requester
+
     while True:
         context = yield from Context.create_client_context()
 

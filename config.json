@@ -1,0 +1,77 @@
+{
+  "server": {
+    "name": "RPi",
+    "IP": "192.168.2.20"
+  },
+  "client": {
+    "name": "myLaptop",
+    "datafile": "data.txt",
+    "demo": true
+  },
+  "sensors": [
+    {
+      "name": "hello",
+      "url": "hello"
+    },
+    {
+      "name": "time",
+      "url": "time",
+      "active": true
+    },
+    {
+      "name": "temperature",
+      "url": "hygrothermo/temperature",
+      "active": true
+    },
+    {
+      "name": "humidity",
+      "url": "hygrothermo/humidity",
+      "active": true
+    },
+    {
+      "name": "AccX",
+      "url": "acceleration/x",
+      "active": true,
+      "period": 3,
+      "min": -3,
+      "max": 3,
+      "channel": 0
+    },
+    {
+      "name": "AccY",
+      "url": "acceleration/y",
+      "active": true,
+      "period": 3,
+      "min": -3,
+      "max": 3,
+      "channel": 1
+    },
+   {
+      "name": "AccZ",
+      "url": "acceleration/z",
+      "active": true,
+      "period": 3,
+      "min": -3,
+      "max": 3,
+      "channel": 2
+    },
+    {
+     "name": "JoyX",
+     "url": "joystick/x",
+     "active": true,
+     "period": 3,
+     "min": -3,
+     "max": 3,
+     "channel": 3
+    },
+ {
+     "name": "JoyY",
+     "url": "joystick/y",
+     "active": true,
+     "period": 3,
+     "min": -3,
+     "max": 3,
+     "channel": 3
+    }	
+  ]
+}

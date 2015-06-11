@@ -25,9 +25,12 @@ import signal
 import h5py
 import numpy
 import datetime
+import paramiko
+import os
 
 from aiocoap import *
 from defs import *
+from numpy.lib import recfunctions as rf
 
 # Default client configuration:
 # IP is (local) 127.0.0.1
@@ -42,6 +45,8 @@ h5_file = h5py.File("testfile.hdf5", "a")
 print("HDF5 File Created!!")
 # flag to enable Octave plotting
 run_demo = False
+# ssh connection to get config file from server
+ssh = paramiko.SSHClient() 
 # asyncio event loop for client
 # Keep a record so that it can be switched back after observation
 client_event_loop = asyncio.get_event_loop()
@@ -58,28 +63,55 @@ else:
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
 
+"""
+Create an HDF5 group with the ip of the controller module connected to the client
+If the module is already recorded in the database, the function just assign it to a HDF5 group variable.
+All the necessary metadata is obtained by the configuration json file provided by the server.
+If it is not possible to create a new group or assign an existing one an exception is throw indicating the failure 
+"""
 def create_grouph5():
-  #Create a HDF5 group with the ip of the module
     try:
         module = server_IP
         if h5_file.__contains__(module):
-            print("Module already recorded")
+            print("Module {} already recorded in the database".format(module))
             grp = h5_file.__getitem__(module)
             grp.attrs["Last access"] = str(datetime.datetime.now())  
         else:
             grp = h5_file.create_group("{}".format(server_IP))
-            grp.attrs["Floor"] = 1
-            grp.attrs["Type"] = "Raspberry PI B+"
-            grp.attrs["Last access"] = str(datetime.datetime.now())
-            print("Group 1 created!")
+            with open('config.json') as config_file:
+                data = json.load(config_file)
+                if 'metadata' in data['server']:
+                    metadata = data['server']['metadata']	
+                    for key in metadata.keys():
+                        grp.attrs['{}'.format(key)] = '{}'.format(metadata[key])
+                    grp.attrs["Last access"] = str(datetime.datetime.now())
+                else:
+                    print("No Metadata available for this module {}".format(module))
+            print("Group {} created!".format(module))
         return grp
     except Exception as e:
         print("Failed to create file or group! {}".format(e))
 
+"""
+Create an HDF5 dataset with the name of the sensor connected to the contorller module and implemented by the configuration json file.
+If a sensor can provide more than one type of measurement (e.g. Temperature and Humidity by a Hygro Thermometer), a group containing all the possible datasets will be created automatically
+All the necessary metadata is obtained by the configuration file provided by the server.
+If it is not possible to create a new dataset an exception is throw indicating the failure 
+"""
 def insert_dataset(grp, name, comp_type):
     try:
         dset = grp.create_dataset("{}".format(name), (1, ), comp_type, maxshape=(None,))
-        #dset.attrs['Description'] = metadata
+        with open('config.json') as config_file:
+                data = json.load(config_file)
+	#TODO: dynamic range counting the number of sensors implemented in the module           
+                for x in range(0, 8):
+                    if name == data['sensors'][x]['url']:
+                         if 'metadata' in data['sensors'][x]:
+                             metadata = data['sensors'][x]['metadata']
+                             for key in metadata.keys():
+                                 dset.attrs['{}'.format(key)] = '{}'.format(metadata[key])
+                         else:
+                             print("No metadata available for this sensor")  	     
     except Exception as e:
         print("Failed to create a dataset! {}".format(e))
 
@@ -109,10 +141,12 @@ def create_comptype(name, jpl):
         comp_type = numpy.dtype([('test', 'f')])
     return comp_type
 
+"""
+Create a new tuple and store the obtained data from sensors in the datasets, identifying the column and type of data by the json file received as response from the server.
+"""
 def store_data(dset, jpl):
     dset.resize(dset.len()+1, 0)
     data = json.loads(jpl['data']) 
-    
     for key in jpl.keys():
         if key == 'data':
             for key in data.keys():
@@ -122,17 +156,25 @@ def store_data(dset, jpl):
                 dset['{}'.format(key), dset.len()-2] = jpl[key]
             except Exception as e: 
                 print('') 
-#Testing dynamic datatype formatting
+    print("Data successfuly recorded in the database!")
+
+#TODO: Testing dynamic datatype formatting
 """
-def create_comptype(response): 
+def create_comptype(jpl): 
    global comp_type
+   i = 0 
+   column = []
+   column.extend([None]*10)
    comp_type = numpy.dtype([('Test', 'i'), ('Test2', 'i')])
-   payload = response.payload.decode(UTF8)
-   jpl = json.loads(payload)
    for key in jpl.keys():
-       print(key)
+       column[i] = key
+       print(column[i])
+       print(i)
+       i += 1  
+      
    print(comp_type.names)
    comp_type.names = ('ok', 'ok2')
+   print(comp_type.names)
    rf.append_fields(comp_type, 'Changing', 'i')
    return comp_type
 """
@@ -205,7 +247,7 @@ def plot_octave(jpayload):
             raise RuntimeError("Failed to plot: {}".format(e));
 
 
-def incoming_data(response):
+def incoming_data(response, url):
     """
     Function used to deal with response
 
@@ -223,12 +265,20 @@ def incoming_data(response):
         jpayload = json.loads(payload)
         print("Result (JSON):\n{}: {}".format(response.code, jpayload))
         try:
+            if grp.__contains__(url):
+                dset = grp.__getitem__(url)
+                store_data(dset, jpayload) 
+            else:
+                insert_dataset(grp, url, create_comptype(name, jpayload))
+                print("All data will be stored in the HDF5 file")
+        except Exception as e:
+            print("Failed to create a dataset {}/ {}".format(url, e))
+        try:
             plot_octave(jpayload)
         except Exception as e:
             print("{}".format(e))
             print("Disabling Octave script...")
             run_demo = False
-    return jpayload
 
 def end_observation(loop):
     """
@@ -242,7 +292,8 @@ def end_observation(loop):
     print("Observation ended by user interrupt...")
     # Terminate observation event loop
     loop.close()
-    print("Observation loop ended...")
+    
+    print("Observation loop ended in the client...")
 
     # Restore event loop
     asyncio.set_event_loop(client_event_loop)
@@ -266,7 +317,7 @@ def post_impl(jargs):
     except Exception as e:
         raise RuntimeError("Failed to create new resource: {}".format(e))
     else:
-        incoming_data(response)
+        incoming_data(response, url)
       
 
 @asyncio.coroutine
@@ -282,23 +333,13 @@ def get_impl(url=''):
     request.set_request_uri('coap://{}/{}'.format(server_IP, url))
     global name
     name = ''
-    values = numpy.array  
     try:
         response = yield from context.request(request).response
     except Exception as e:
         raise RuntimeError("Failed to fetch resource: {}".format(e))
     else:
-        jpl = incoming_data(response)
-        try:
-            if grp.__contains__(url):
-                dset = grp.__getitem__(url)
-                store_data(dset, jpl) 
-            else:
-                insert_dataset(grp, url, create_comptype(name, jpl))
-                print("All data will be stored in the HDF5 file")
-        except Exception as e:
-            print("Failed to create a dataset {}/ {}".format(url, e))
-
+        incoming_data(response, url)
+     
 @asyncio.coroutine
 def put_impl(url='', payload=""):
     """
@@ -320,7 +361,7 @@ def put_impl(url='', payload=""):
     except Exception as e:
         raise RuntimeError("Failed to update resource: {}".format(e))
     else:
-        incoming_data(response)
+        incoming_data(response, url)
 
 @asyncio.coroutine
 def observe_impl(url=''):
@@ -331,47 +372,29 @@ def observe_impl(url=''):
     :raises NameError: cannot locate resource at given url
     :raises RuntimeError: server responds code is unsuccessful
     """
-    global rate
+    context = yield from Context.create_client_context()
 
-    while True:
-        context = yield from Context.create_client_context()
+    request = Message(code=GET)
+    request.set_request_uri('coap://{}/{}'.format(server_IP, url))
 
-        request = Message(code=GET)
-        request.set_request_uri('coap://{}/{}'.format(server_IP, url))
-
-        request.opt.observe = 0
-        observation_is_over = asyncio.Future()
-    
-        requester = context.request(request)
-        requester.observation = aiocoap.protocol.ClientObservation(request)
-
-        requester.observation.register_errback(observation_is_over.set_result)
-        requester.observation.register_callback(lambda data: incoming_data(data))
-
-        try:
-            response_data = yield from requester.response
-        except socket.gaierror as e:
-            raise NameError("Name resolution error: {}".format(e))
- 
-        if response_data.payload:
-            jpl = incoming_data(response_data)
-            rate = jpl['rate']
-            try:
-                if grp.__contains__(url):
-                    dset = grp.__getitem__(url)
-                    store_data(dset, jpl) 
-                else:
-                    insert_dataset(grp, url, create_comptype(name, jpl))
-                    print("All data will be stored in the HDF5 file")
-            except Exception as e:
-                print("Failed to create a dataset {}/ {}".format(url, e))
-        if not response_data.code.is_successful():
-            raise RuntimeError("Observation failed!")
-            exit_reason = yield from observation_is_over
-            print("Observation exits due to {}".format(exit_reason))
+    request.opt.observe = 0
+    observation_is_over = asyncio.Future()
+    requester = context.request(request)
+    requester.observation.register_errback(observation_is_over.set_result)
+    requester.observation.register_callback(lambda data: incoming_data(data, url))
+    try:
+        response_data = yield from requester.response
+    except socket.gaierror as e:
+        raise NameError("Name resolution error: {}".format(e))
        
-        yield from asyncio.sleep(rate)
+    if response_data.payload:
+        incoming_data(response_data, url)
 
+    if not response_data.code.is_successful():
+       raise RuntimeError("Observation failed!")
+            
+    exit_reason = yield from observation_is_over
+    print("Observation exits due to {}".format(exit_reason))
 
 class Commands():
     """
@@ -432,6 +455,7 @@ class Commands():
         """
         print("Goodbye!")
         print("Exiting...")
+        h5_file.close()
         sys.exit(0)
 
     @staticmethod
@@ -590,7 +614,6 @@ class Commands():
                             # In case of exceptions, must terminate observation loop and
                             #   switch back to client event loop
                             loop.close()
-                            h5_file.close()
                             asyncio.set_event_loop(client_event_loop)
 
                     else:   # Resource is not configured to observable
@@ -703,9 +726,24 @@ def main():
     global data_file
     global run_demo
     global client_event_loop
- 
+
+
     try:
-        # TODO: resource info is better acquired from server, provided server's IP
+        ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect('192.168.2.20', username='pi', password = 'raspberry')
+        sftp = ssh.open_sftp()
+        sftp.get('POEModule-master/POEModule-master/config.json', 'config.json') 
+        sftp.close()
+        ssh.close()
+    except Exception as e:
+        print("Failed to parse config file form server: {}".format(e))
+        print("Exiting client!!!")
+        h5_file.close()
+        return
+
+    try:
+        # TODO: **resource info is better acquired from server, provided server's IP** probably done with the addition of the lines above
         with open('config.json') as config_file:
             data = json.load(config_file)
             server_IP = data['server']['IP']
@@ -714,7 +752,6 @@ def main():
             # re-format each sensor entry for client to use
             for r in data['sensors']:
                 resources[r['name']] = {i: r[i] for i in r if i != 'name'}
-
             # add default activeness as "false" - i.e. not observable
             for r in resources:
                 if 'active' not in resources[r]:
@@ -722,9 +759,11 @@ def main():
     except Exception as e:
         print("Failed to parse config file: {}".format(e))
         print("Exiting client!!!")
+        h5_file.close()
         return
-   
+ 
 
+  
     #print("{}".format(resources))
 
     if run_demo is True and demo_config is True:

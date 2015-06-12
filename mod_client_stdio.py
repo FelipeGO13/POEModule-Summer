@@ -30,7 +30,6 @@ import os
 
 from aiocoap import *
 from defs import *
-from numpy.lib import recfunctions as rf
 
 # Default client configuration:
 # IP is (local) 127.0.0.1
@@ -63,13 +62,15 @@ else:
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
 
-"""
-Create an HDF5 group with the ip of the controller module connected to the client
-If the module is already recorded in the database, the function just assign it to a HDF5 group variable.
-All the necessary metadata is obtained by the configuration json file provided by the server.
-If it is not possible to create a new group or assign an existing one an exception is throw indicating the failure 
-"""
+
 def create_grouph5():
+    """
+    Create an HDF5 group with the ip of the controller module connected to the client
+    If the module is already recorded in the database, the function just assign it to a HDF5 group 
+    variable.
+    All the necessary metadata is obtained by the configuration json file provided by the server.
+    
+    """
     try:
         module = server_IP
         if h5_file.__contains__(module):
@@ -92,19 +93,19 @@ def create_grouph5():
     except Exception as e:
         print("Failed to create file or group! {}".format(e))
 
-"""
-Create an HDF5 dataset with the name of the sensor connected to the contorller module and implemented by the configuration json file.
-If a sensor can provide more than one type of measurement (e.g. Temperature and Humidity by a Hygro Thermometer), a group containing all the possible datasets will be created automatically
-All the necessary metadata is obtained by the configuration file provided by the server.
-If it is not possible to create a new dataset an exception is throw indicating the failure 
-"""
 def insert_dataset(grp, name, comp_type):
+    """
+    Create an HDF5 dataset with the name of the sensor connected to the contorller module and
+    implemented by the configuration json file.
+   
+    All the necessary metadata is obtained by the configuration file provided by the server.
+    """
     try:
         dset = grp.create_dataset("{}".format(name), (1, ), comp_type, maxshape=(None,))
         with open('config.json') as config_file:
                 data = json.load(config_file)
-	#TODO: dynamic range counting the number of sensors implemented in the module           
-                for x in range(0, 8):
+                length = len(data['sensors'])        
+                for x in range(0, length-1):
                     if name == data['sensors'][x]['url']:
                          if 'metadata' in data['sensors'][x]:
                              metadata = data['sensors'][x]['metadata']
@@ -116,7 +117,7 @@ def insert_dataset(grp, name, comp_type):
         print("Failed to create a dataset! {}".format(e))
 
 #Testing fixed datatype formatting
-
+"""
 def create_comptype(name, jpl):
     global comp_type
     if jpl['name'] == 'temperature':
@@ -125,12 +126,12 @@ def create_comptype(name, jpl):
         comp_type = numpy.dtype([('time', 'S20'),('humidity', 'f'), ('active', 'S10')])
     elif 'Acc' in jpl['name']:
         if 'X' in jpl['name']:
-            comp_type = numpy.dtype([('time', 'S20'),('AccX', 'f'), ('rate', 'i')])
+            comp_type = numpy.dtype([('time', 'S20'),('AccX', 'f'), ('rate', 'i'), ('active', 'S10')])
         elif 'Y' in jpl['name']:
-            comp_type = numpy.dtype([('time', 'S20'),('AccY', 'f'), ('rate', 'i')])
+            comp_type = numpy.dtype([('time', 'S20'),('AccY', 'f'), ('rate', 'i'), ('active', 'S10')])
         elif 'Z' in jpl['name']:
-            comp_type = numpy.dtype([('time', 'S20'),('AccZ', 'f'), ('rate', 'i')])
-        elif jpl['name'] == 'hello':
+            comp_type = numpy.dtype([('time', 'S20'),('AccZ', 'f'), ('rate', 'i'), ('active', 'S10')])
+    elif jpl['name'] == 'hello':
             comp_type = numpy.dtype([('time', 'S20'),('hello', 'S30')])
     elif 'Joy' in jpl['name']:
         if 'X' in jpl['name']:
@@ -140,11 +141,13 @@ def create_comptype(name, jpl):
     else:
         comp_type = numpy.dtype([('test', 'f')])
     return comp_type
+"""
 
-"""
-Create a new tuple and store the obtained data from sensors in the datasets, identifying the column and type of data by the json file received as response from the server.
-"""
 def store_data(dset, jpl):
+    """
+    Create a new tuple and store the obtained data from sensors in the datasets, identifying 
+    the column and type of data by the json file received as response from the server.
+    """
     dset.resize(dset.len()+1, 0)
     data = json.loads(jpl['data']) 
     for key in jpl.keys():
@@ -158,26 +161,55 @@ def store_data(dset, jpl):
                 print('') 
     print("Data successfuly recorded in the database!")
 
-#TODO: Testing dynamic datatype formatting
-"""
+#Testing dynamic datatype formatting
+
 def create_comptype(jpl): 
-   global comp_type
+   global temp_comptype
+   data = json.loads(jpl['data']) 
    i = 0 
-   column = []
-   column.extend([None]*10)
-   comp_type = numpy.dtype([('Test', 'i'), ('Test2', 'i')])
+   columns = []
+   types = []
+   #TODO: Change this to be more dynamic
+   columns.extend([None]*10)
+   #TODO: Change this to be more dynamic
+   types.extend([None]*10)
+   #TODO: Change this to be more dynamic
+   temp_comptype = numpy.dtype([('Test', 'i'), ('Test2', 'i'), ('Test3', 'i'), ('Test4', 'i')])
+
    for key in jpl.keys():
-       column[i] = key
-       print(column[i])
-       print(i)
-       i += 1  
-      
-   print(comp_type.names)
-   comp_type.names = ('ok', 'ok2')
-   print(comp_type.names)
-   rf.append_fields(comp_type, 'Changing', 'i')
+       if key == 'name':
+           columns[i] = jpl[key] 
+           types[i] = check_type(data[jpl[key]])
+           i += 1 
+       elif key == 'data':
+          print('')
+       else:
+           types[i] = check_type(jpl[key])
+           columns[i] = key
+           i += 1 
+
+   temp_comptype.names = (columns[0], columns[1], columns[2] , columns[3])
+   comp_type = temp_comptype.descr
+
+   for x in range(0, len(comp_type)):
+       comp_type[x] = (comp_type[x][0], types[x])
    return comp_type
-"""
+
+# Check type of data
+#TODO: Check all possible datatypes available and include more formatting options
+def check_type(data):
+    if type(data) is float:
+        return 'f'
+    elif type(data) is int:
+        return 'i'
+    elif type(data) is str:
+        try:
+            float(data)
+            return 'f'
+        except:
+            return 'S20'
+    else:
+        return 'S20' 
 
 def plot_octave(jpayload):
     # TODO: plotting function should be more dynamic, to match the configurability of the rest of the program
@@ -269,10 +301,10 @@ def incoming_data(response, url):
                 dset = grp.__getitem__(url)
                 store_data(dset, jpayload) 
             else:
-                insert_dataset(grp, url, create_comptype(name, jpayload))
+                insert_dataset(grp, url, create_comptype(jpayload))
                 print("All data will be stored in the HDF5 file")
         except Exception as e:
-            print("Failed to create a dataset {}/ {}".format(url, e))
+            print("Failed to store in a dataset {}/ {}".format(url, e))
         try:
             plot_octave(jpayload)
         except Exception as e:
@@ -319,7 +351,6 @@ def post_impl(jargs):
     else:
         incoming_data(response, url)
       
-
 @asyncio.coroutine
 def get_impl(url=''):
     """
@@ -727,6 +758,9 @@ def main():
     global run_demo
     global client_event_loop
 
+     # TODO: **resource info is better acquired from server, provided server's IP** probably done with the addition of the lines above
+   
+# Given the server's IP, the username and password, acquire the configuration json file using sftp and store it into the client folder until the next program execution (It's a little bit slow, maybe it will be necessary to optimize this feature
 
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
@@ -736,14 +770,6 @@ def main():
         sftp.get('POEModule-master/POEModule-master/config.json', 'config.json') 
         sftp.close()
         ssh.close()
-    except Exception as e:
-        print("Failed to parse config file form server: {}".format(e))
-        print("Exiting client!!!")
-        h5_file.close()
-        return
-
-    try:
-        # TODO: **resource info is better acquired from server, provided server's IP** probably done with the addition of the lines above
         with open('config.json') as config_file:
             data = json.load(config_file)
             server_IP = data['server']['IP']
@@ -757,12 +783,10 @@ def main():
                 if 'active' not in resources[r]:
                     resources[r]['active'] = False
     except Exception as e:
-        print("Failed to parse config file: {}".format(e))
+        print("Failed to parse config file form server: {}".format(e))
         print("Exiting client!!!")
         h5_file.close()
         return
- 
-
   
     #print("{}".format(resources))
 

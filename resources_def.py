@@ -22,7 +22,7 @@ NAME_FIELD = 'name'
 ACTIVE_FIELD = 'active'
 SAMPLE_R_FIELD = 'rate'
 DATA_FIELD = 'data'
-TIME_FIELD = 'time'
+TIME_FIELD = 'date time'
 
 
 class PayloadWrapper:

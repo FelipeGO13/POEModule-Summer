@@ -12,7 +12,7 @@
   "client": {
     "name": "myLaptop",
     "datafile": "data.txt",
-    "demo": false
+    "demo": true
   },
   "sensors": [
     {

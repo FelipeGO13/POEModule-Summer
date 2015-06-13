@@ -69,10 +69,10 @@ def create_grouph5():
     If the module is already recorded in the database, the function just assign it to a HDF5 group 
     variable.
     All the necessary metadata is obtained by the configuration json file provided by the server.
-    
     """
     try:
         module = server_IP
+
         if h5_file.__contains__(module):
             print("Module {} already recorded in the database".format(module))
             grp = h5_file.__getitem__(module)
@@ -88,8 +88,11 @@ def create_grouph5():
                     grp.attrs["Last access"] = str(datetime.datetime.now())
                 else:
                     print("No Metadata available for this module {}".format(module))
+
             print("Group {} created!".format(module))
+
         return grp
+
     except Exception as e:
         print("Failed to create file or group! {}".format(e))
 
@@ -104,7 +107,8 @@ def insert_dataset(grp, name, comp_type):
         dset = grp.create_dataset("{}".format(name), (1, ), comp_type, maxshape=(None,))
         with open('config.json') as config_file:
                 data = json.load(config_file)
-                length = len(data['sensors'])        
+                length = len(data['sensors'])  
+      
                 for x in range(0, length-1):
                     if name == data['sensors'][x]['url']:
                          if 'metadata' in data['sensors'][x]:
@@ -112,11 +116,16 @@ def insert_dataset(grp, name, comp_type):
                              for key in metadata.keys():
                                  dset.attrs['{}'.format(key)] = '{}'.format(metadata[key])
                          else:
-                             print("No metadata available for this sensor")  	     
+                             print("No metadata available for this sensor") 
+ 	
+        print("Dataset succesfully created")     
     except Exception as e:
         print("Failed to create a dataset! {}".format(e))
 
 #Testing fixed datatype formatting
+    """
+    Hard coded formatting for the compound type that defines the datatypes of the dataset columns
+    """
 """
 def create_comptype(name, jpl):
     global comp_type
@@ -146,10 +155,11 @@ def create_comptype(name, jpl):
 def store_data(dset, jpl):
     """
     Create a new tuple and store the obtained data from sensors in the datasets, identifying 
-    the column and type of data by the json file received as response from the server.
+    the column by the json file received as response from the server.
     """
     dset.resize(dset.len()+1, 0)
     data = json.loads(jpl['data']) 
+
     for key in jpl.keys():
         if key == 'data':
             for key in data.keys():
@@ -159,41 +169,46 @@ def store_data(dset, jpl):
                 dset['{}'.format(key), dset.len()-2] = jpl[key]
             except Exception as e: 
                 print('') 
-    print("Data successfuly recorded in the database!")
+
+    print("Data successfully recorded in the database!")
 
 #Testing dynamic datatype formatting
 
 def create_comptype(jpl): 
-   global temp_comptype
-   data = json.loads(jpl['data']) 
-   i = 0 
-   columns = []
-   types = []
-   #TODO: Change this to be more dynamic
-   columns.extend([None]*10)
-   #TODO: Change this to be more dynamic
-   types.extend([None]*10)
-   #TODO: Change this to be more dynamic
-   temp_comptype = numpy.dtype([('Test', 'i'), ('Test2', 'i'), ('Test3', 'i'), ('Test4', 'i')])
+    """
+    Dynamic formatting for the compound type that defines the datatypes of the dataset columns
+    """
+    global temp_comptype
+    data = json.loads(jpl['data']) 
+    i = 0 
+    columns = []
+    types = []
 
-   for key in jpl.keys():
-       if key == 'name':
-           columns[i] = jpl[key] 
-           types[i] = check_type(data[jpl[key]])
-           i += 1 
-       elif key == 'data':
-          print('')
-       else:
+    columns.extend([None]*len(jpl.keys()))
+
+    types.extend([None]*len(jpl.keys()))
+
+    #TODO: Change this to be more dynamic
+    temp_comptype = numpy.dtype([('Test', 'i'), ('Test2', 'i'), ('Test3', 'i'), ('Test4', 'i')])
+
+    for key in jpl.keys():
+        if key == 'name':
+            columns[i] = jpl[key] 
+            types[i] = check_type(data[jpl[key]])
+            i += 1 
+        elif key == 'data':
+           print('')
+        else:
            types[i] = check_type(jpl[key])
            columns[i] = key
            i += 1 
 
-   temp_comptype.names = (columns[0], columns[1], columns[2] , columns[3])
-   comp_type = temp_comptype.descr
+    temp_comptype.names = (columns[0], columns[1], columns[2] , columns[3])
+    comp_type = temp_comptype.descr
 
-   for x in range(0, len(comp_type)):
-       comp_type[x] = (comp_type[x][0], types[x])
-   return comp_type
+    for x in range(0, len(comp_type)):
+        comp_type[x] = (comp_type[x][0], types[x])
+    return comp_type
 
 # Check type of data
 #TODO: Check all possible datatypes available and include more formatting options
@@ -204,12 +219,14 @@ def check_type(data):
         return 'i'
     elif type(data) is str:
         try:
-            float(data)
-            return 'f'
+            if float(data):
+                return 'f'
         except:
-            return 'S20'
+            return 'S30'
+    elif type(data) is bool:
+        return 'bool'
     else:
-        return 'S20' 
+        print("It was not possible to identify this data format")
 
 def plot_octave(jpayload):
     # TODO: plotting function should be more dynamic, to match the configurability of the rest of the program
@@ -362,8 +379,7 @@ def get_impl(url=''):
     context = yield from Context.create_client_context()
     request = Message(code=GET)
     request.set_request_uri('coap://{}/{}'.format(server_IP, url))
-    global name
-    name = ''
+ 
     try:
         response = yield from context.request(request).response
     except Exception as e:

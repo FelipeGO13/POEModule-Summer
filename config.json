@@ -68,6 +68,8 @@
       "min": -3,
       "max": 3,
       "channel": 0,
+      "max_limit": 0.5,
+      "min_limit": -0.5,
        "metadata": 
       {
        "Sensor ID": "AccX1-RP1",
@@ -85,6 +87,8 @@
      "min": -3,
      "max": 3,
      "channel": 1,	
+     "max_limit":0.5,
+     "min_limit":-0.5,
      "metadata": 
       {
        "Sensor ID": "AccY1-RP1",
@@ -102,6 +106,8 @@
      "min": -3,
      "max": 3,
      "channel": 2,
+     "max_limit": 0.5,
+     "min_limit": -0.5,
      "metadata": 
       {
        "Sensor ID": "AccZ1-RP1",

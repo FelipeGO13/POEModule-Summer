@@ -27,13 +27,19 @@ import numpy
 import datetime
 import paramiko
 import os
+import subprocess
+import matplotlib.pylab as plt
+
 
 from aiocoap import *
 from defs import *
 
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																															
 # Default client configuration:
 # IP is (local) 127.0.0.1
 server_IP = 'localhost'
+not_alert = True
+plotting, = plt.plot([], [])
 # resources independent from hardware implementation
 resources = {'hello': {'url': 'hello'},
              'time': {'url': 'time'}}
@@ -41,12 +47,13 @@ resources = {'hello': {'url': 'hello'},
 data_file = 'data.txt'
 # Creating HDF5 file or opening an existing one
 h5_file = h5py.File("testfile.hdf5", "a")
+
 print("HDF5 File Created!!")
 # flag to enable Octave plotting
 run_demo = False
 # ssh connection to get config file from server
 ssh = paramiko.SSHClient() 
-# asyncio event loop for client
+# asyncio event loop for																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																 client
 # Keep a record so that it can be switched back after observation
 client_event_loop = asyncio.get_event_loop()
 
@@ -58,6 +65,7 @@ except Exception as e:
 else:
     run_demo = True
 
+print(plotting)
 # logging configuration
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
@@ -108,7 +116,6 @@ def insert_dataset(grp, name, comp_type):
         with open('config.json') as config_file:
                 data = json.load(config_file)
                 length = len(data['sensors'])  
-      
                 for x in range(0, length-1):
                     if name == data['sensors'][x]['url']:
                          if 'metadata' in data['sensors'][x]:
@@ -157,13 +164,28 @@ def store_data(dset, jpl):
     Create a new tuple and store the obtained data from sensors in the datasets, identifying 
     the column by the json file received as response from the server.
     """
+    global not_alert
+    global plotting
+    print(plotting)
     dset.resize(dset.len()+1, 0)
     data = json.loads(jpl['data']) 
-
     for key in jpl.keys():
         if key == 'data':
             for key in data.keys():
                 dset['{}'.format(key), dset.len()-2] = data[jpl['name']]
+                if not_alert is True:
+                    not_alert = alert(data, dset)            
+                else:
+                    if type(plotting.get_xdata()) is not int:
+                        next = len(plotting.get_xdata()) + 1
+                    else:
+                        next = plotting.get_xdata()+1
+                    plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
+                    plotting.set_xdata(numpy.insert(plotting.get_xdata(), (next-1), next))
+                    ax = plt.gca()
+                    ax.relim()
+                    ax.autoscale_view()
+                    plt.draw()
         else: 
             try:          
                 dset['{}'.format(key), dset.len()-2] = jpl[key]
@@ -228,6 +250,28 @@ def check_type(data):
     else:
         print("It was not possible to identify this data format")
 
+def alert(data, dset): 
+    #print(data)
+    global plotting
+    with open('config.json') as config_file:
+        config = json.load(config_file)
+        length = len(config['sensors'])     
+        for key in data.keys():
+            for x in range(0, length-1):
+                if key == config['sensors'][x]['name']:
+                    sensor = config['sensors'][x]
+                    if dset.attrs.__contains__(key):
+                        if (float(data[key]) > sensor['max_limit']) | (float(data[key]) < sensor['min_limit']):
+                            plotting, = plt.plot(dset[key])
+                            plt.xlabel("Number of measurements")
+                            plt.ylabel(key)
+                            plt.title("Test Graphs")
+                            plt.show(block=False)
+                            return False
+    return True
+
+
+
 def plot_octave(jpayload):
     # TODO: plotting function should be more dynamic, to match the configurability of the rest of the program
     """
@@ -248,12 +292,12 @@ def plot_octave(jpayload):
         time = []
         data = []
         plot_i = -1
-
+        print(jpayload['name'])
         try:
             # TODO: data format for plotting should be more dynamic
             jvalue = json.loads(jpayload['data'])
             #print("{}".format(jvalue))
-            if jpayload['name'] == 'joystick':
+            if jpayload['name'] == 'JoyX':
                 data += [float('NaN'), float('NaN'), float('NaN'),
                          float('NaN'), float('NaN'), float('NaN'),
                          float(jvalue['leftright']), float(jvalue['updown'])]
@@ -276,7 +320,7 @@ def plot_octave(jpayload):
 
         # Parse payload data
         import re
-        time_str = re.split('[- :]', jpayload['time'])
+        time_str = re.split('[- :]', jpayload['date time'])
         try:
             for i in range(5):
                 time += [int(time_str[i])]
@@ -317,17 +361,18 @@ def incoming_data(response, url):
             if grp.__contains__(url):
                 dset = grp.__getitem__(url)
                 store_data(dset, jpayload) 
+                plot_octave(jpayload)
             else:
                 insert_dataset(grp, url, create_comptype(jpayload))
+                plot_octave(jpayload)
                 print("All data will be stored in the HDF5 file")
         except Exception as e:
-            print("Failed to store in a dataset {}/ {}".format(url, e))
-        try:
-            plot_octave(jpayload)
-        except Exception as e:
+            #print("Failed to store in a dataset {}/ {}".format(url, e))
             print("{}".format(e))
             print("Disabling Octave script...")
             run_demo = False
+       
+          
 
 def end_observation(loop):
     """
@@ -611,6 +656,8 @@ class Commands():
     @staticmethod
     @asyncio.coroutine
     def do_resource(name, code='GET', *args):
+        global not_alert
+        not_alert = True
         """
         General implementation of resource command for GET/PUT
 
@@ -661,6 +708,7 @@ class Commands():
                             # In case of exceptions, must terminate observation loop and
                             #   switch back to client event loop
                             loop.close()
+                            not_alert = True
                             asyncio.set_event_loop(client_event_loop)
 
                     else:   # Resource is not configured to observable
@@ -773,11 +821,16 @@ def main():
     global data_file
     global run_demo
     global client_event_loop
+    global not_alert
+    global plotting
 
      # TODO: **resource info is better acquired from server, provided server's IP** probably done with the addition of the lines above
    
 # Given the server's IP, the username and password, acquire the configuration json file using sftp and store it into the client folder until the next program execution (It's a little bit slow, maybe it will be necessary to optimize this feature
 
+    not_alert = True
+    plotting, = plt.plot([], [])
+    print(plotting)
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())

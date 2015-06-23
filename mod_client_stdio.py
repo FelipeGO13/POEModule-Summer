@@ -29,6 +29,7 @@ import paramiko
 import os
 import subprocess
 import matplotlib.pylab as plt
+import scapy
 
 
 from aiocoap import *
@@ -262,11 +263,19 @@ def alert(data, dset):
                     sensor = config['sensors'][x]
                     if dset.attrs.__contains__(key):
                         if (float(data[key]) > sensor['max_limit']) | (float(data[key]) < sensor['min_limit']):
+                            ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+                            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                            ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+                            stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe.tcl")
+                            for line in stdout.readlines():
+                                print (line.strip())
+                            ssh.close()                       
                             plotting, = plt.plot(dset[key])
                             plt.xlabel("Number of measurements")
                             plt.ylabel(key)
                             plt.title("Test Graphs")
                             plt.show(block=False)
+                           
                             return False
     return True
 

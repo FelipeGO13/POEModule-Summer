@@ -38,6 +38,8 @@
       "name": "temperature",
       "url": "hygrothermo/temperature",
       "active": true,
+      "max_limit": 50,
+      "min_limit": 0,
       "metadata": 
       {
        "Sensor ID": "Temp1-RPI",
@@ -51,6 +53,8 @@
       "name": "humidity",
       "url": "hygrothermo/humidity",
       "active": true,
+      "max_limit": 80,
+      "min_limit": 0,
       "metadata": 
       {
        "Sensor ID": "Hum1-RP1",

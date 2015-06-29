@@ -1,7 +1,7 @@
 """
     Created on November 22, 2014
     Last modified on April 16, 2015 by Yaodong Yu
-
+    
     @author: Ruibing Zhao
     @author: Yaodong Yu
 
@@ -29,17 +29,16 @@ import paramiko
 import os
 import subprocess
 import matplotlib.pylab as plt
-import scapy
-
 
 from aiocoap import *
 from defs import *
-
-																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																															
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																													
 # Default client configuration:
 # IP is (local) 127.0.0.1
 server_IP = 'localhost'
+# Alert is not on
 not_alert = True
+# Plot is initialized with empty axis 
 plotting, = plt.plot([], [])
 # resources independent from hardware implementation
 resources = {'hello': {'url': 'hello'},
@@ -47,9 +46,11 @@ resources = {'hello': {'url': 'hello'},
 # Octave plotting data file
 data_file = 'data.txt'
 # Creating HDF5 file or opening an existing one
-h5_file = h5py.File("testfile.hdf5", "a")
-
-print("HDF5 File Created!!")
+try:
+    h5_file = h5py.File("testfile.hdf5", "a")
+    print("HDF5 File succefully created or accessed")
+except:
+    print("An error ocurred opening or creating the HDF5 file")
 # flag to enable Octave plotting
 run_demo = False
 # ssh connection to get config file from server
@@ -66,11 +67,9 @@ except Exception as e:
 else:
     run_demo = True
 
-print(plotting)
 # logging configuration
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
-
 
 def create_grouph5():
     """
@@ -167,32 +166,109 @@ def store_data(dset, jpl):
     """
     global not_alert
     global plotting
-    print(plotting)
-    dset.resize(dset.len()+1, 0)
+    global plotting2
+    global ax
+    global text
+    global graph
+    global start
+    global server_IP
+
+    not_alert = True
+
+    with open('config.json') as config_file:
+        config = json.load(config_file)
+        length = len(config['sensors'])     
+        for x in range(0, length-1):
+            if jpl['name'] == config['sensors'][x]['name']:
+                sensor = config['sensors'][x]
+    if graph == False:
+        plt.figure(1)
+
+        plt.subplot(211)
+        plotting, = plt.plot(dset[jpl['name']], color='black')
+        plt.ylim([(sensor['min_limit']*2), (sensor['max_limit']*2)])
+        plt.xlim(len(dset[jpl['name']]), 100)
+        plt.xlabel("Number of measurements")
+        plt.ylabel(jpl['name'])
+        plt.title("Real-Time Visualization {}".format(server_IP))
+        plt.axhline(y=sensor['max_limit'], c='red')
+        plt.axhline(y=sensor['min_limit'], c='red')
+        ax = plt.gca()
+        
+        textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[jpl['name']]), max(dset[jpl['name']]), min(dset[jpl['name']])) 
+        props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+        text = ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
+        plt.subplot(212)
+        plotting2, = plt.plot(0, 0, color='blue')
+        plt.ylim(-10, 100)
+        plt.xlim(len(dset[jpl['name']]), 100)
+        plt.xlabel("Number of measurements")
+        plt.ylabel("Power in the second module (W)")
+       
+        plt.show(block=False)
+        graph = True
+
     data = json.loads(jpl['data']) 
+    avg = 0
+
     for key in jpl.keys():
         if key == 'data':
             for key in data.keys():
-                dset['{}'.format(key), dset.len()-2] = data[jpl['name']]
-                if not_alert is True:
-                    not_alert = alert(data, dset)            
+                dset[key, dset.len()-1] = data[jpl['name']]
+                avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
+                avg = float(avg_trunc)
+                ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+                stdin, stdout, stderr = ssh.exec_command("show power inline gi 2/5")
+                power = float(stdout.read()[310: 320])
+                ssh.close() 
+       
+                if (not_alert is True) & (power == 0):
+                    print("Starting 2nd Module {}".format(datetime.datetime.now()))
+                    not_alert = alert(data, dset)  
+                    start = datetime.datetime.now()
                 else:
-                    if type(plotting.get_xdata()) is not int:
+                    print("alert not activated")    
+                    
+                if type(plotting.get_xdata()) is not int:
                         next = len(plotting.get_xdata()) + 1
-                    else:
+                else:
                         next = plotting.get_xdata()+1
-                    plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
-                    plotting.set_xdata(numpy.insert(plotting.get_xdata(), (next-1), next))
-                    ax = plt.gca()
-                    ax.relim()
-                    ax.autoscale_view()
-                    plt.draw()
+                plotting2.set_ydata(numpy.insert(plotting2.get_ydata(), len(plotting2.get_ydata()), power))
+                plotting2.set_xdata(numpy.insert(plotting2.get_xdata(), len(plotting2.get_xdata()), len(plotting2.get_xdata())+1))
+                plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
+                plotting.set_xdata(numpy.insert(plotting.get_xdata(), (next-1), next))
+               
+                ax.relim()
+                ax.autoscale_view()
+                
+                textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[key]), max(dset[key]), min(dset[key])) 
+                text.set_text(textstr)
+                plt.draw()
         else: 
             try:          
-                dset['{}'.format(key), dset.len()-2] = jpl[key]
+                dset['{}'.format(key), dset.len()-1] = jpl[key]
             except Exception as e: 
                 print('') 
+    dset['average', dset.len()-1] = avg       
+    dset.resize(dset.len()+1, 0)
+    now = datetime.datetime.now()
 
+    diff = now-start
+    print(diff)
+
+    if float(diff.total_seconds()) > 30 :
+          ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+          ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+          ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+          stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
+          print("Second module disabled!")
+          ssh.close() 
+          start = datetime.datetime.now()
+    else:
+        print("Second module still working")
+    
     print("Data successfully recorded in the database!")
 
 #Testing dynamic datatype formatting
@@ -203,16 +279,15 @@ def create_comptype(jpl):
     """
     global temp_comptype
     data = json.loads(jpl['data']) 
-    i = 0 
     columns = []
     types = []
-
+    i=0
     columns.extend([None]*len(jpl.keys()))
 
     types.extend([None]*len(jpl.keys()))
 
     #TODO: Change this to be more dynamic
-    temp_comptype = numpy.dtype([('Test', 'i'), ('Test2', 'i'), ('Test3', 'i'), ('Test4', 'i')])
+    temp_comptype = numpy.dtype([('Test', 'i'), ('Test2', 'i'), ('Test3', 'i'), ('Test4', 'i'), ('Test5', 'i')])
 
     for key in jpl.keys():
         if key == 'name':
@@ -225,10 +300,9 @@ def create_comptype(jpl):
            types[i] = check_type(jpl[key])
            columns[i] = key
            i += 1 
-
-    temp_comptype.names = (columns[0], columns[1], columns[2] , columns[3])
+    temp_comptype.names = (columns[0], columns[1], columns[2] , columns[3], 'average')
     comp_type = temp_comptype.descr
-
+    types[4] = 'f2'
     for x in range(0, len(comp_type)):
         comp_type[x] = (comp_type[x][0], types[x])
     return comp_type
@@ -252,8 +326,12 @@ def check_type(data):
         print("It was not possible to identify this data format")
 
 def alert(data, dset): 
-    #print(data)
+ 
     global plotting
+    global plotting2
+    global ax
+    global text
+
     with open('config.json') as config_file:
         config = json.load(config_file)
         length = len(config['sensors'])     
@@ -267,15 +345,29 @@ def alert(data, dset):
                             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                             ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
                             stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe.tcl")
-                            for line in stdout.readlines():
-                                print (line.strip())
-                            ssh.close()                       
-                            plotting, = plt.plot(dset[key])
+                            print("Second module enabled!")
+                            ssh.close()      
+                           
+                            """
+                            plt.figure(1)
+                          
+                            plt.subplot(211)
+                            plotting, = plt.plot(dset[key], color='black')
+                            plt.subplot(212)
+                            plotting2, = plt.plot(plotting.get_xdata(),test, color='blue')
+                            plt.ylim([(sensor['min_limit']*2), (sensor['max_limit']*2)])
                             plt.xlabel("Number of measurements")
                             plt.ylabel(key)
-                            plt.title("Test Graphs")
+                            plt.title("Real-Time Visualization")
+                            ax = plt.gca()
+                            plt.axhline(y=sensor['max_limit'], c='red')
+                            plt.axhline(y=sensor['min_limit'], c='red')
+                            textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[key]), max(dset[key]), min(dset[key])) 
+                            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
+                            text = ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
                             plt.show(block=False)
-                           
+                            """
+                            print("2nd Module enabled: {}".format(datetime.datetime.now()))
                             return False
     return True
 
@@ -366,6 +458,7 @@ def incoming_data(response, url):
     else:
         jpayload = json.loads(payload)
         print("Result (JSON):\n{}: {}".format(response.code, jpayload))
+
         try:
             if grp.__contains__(url):
                 dset = grp.__getitem__(url)
@@ -375,14 +468,13 @@ def incoming_data(response, url):
                 insert_dataset(grp, url, create_comptype(jpayload))
                 plot_octave(jpayload)
                 print("All data will be stored in the HDF5 file")
+
         except Exception as e:
-            #print("Failed to store in a dataset {}/ {}".format(url, e))
-            print("{}".format(e))
-            print("Disabling Octave script...")
+            print("Failed to store in a dataset {}/ {}".format(url, e))
+            #print("{}".format(e))
+            #print("Disabling Octave script...")
             run_demo = False
        
-          
-
 def end_observation(loop):
     """
     Callback function used for ending observation to resource on client side.
@@ -391,11 +483,11 @@ def end_observation(loop):
     """
     # FIXME: method should actually end observation on server.
     #       Now, it only deals with client side
-
+    global graph
     print("Observation ended by user interrupt...")
     # Terminate observation event loop
     loop.close()
-    
+    graph = False
     print("Observation loop ended in the client...")
 
     # Restore event loop
@@ -456,7 +548,7 @@ def put_impl(url='', payload=""):
 
     request = Message(code=PUT, payload=payload.encode(UTF8))
     request.set_request_uri('coap://{}/{}'.format(server_IP, url))
-
+    
     try:
         response = yield from context.request(request).response
     except Exception as e:
@@ -473,6 +565,7 @@ def observe_impl(url=''):
     :raises NameError: cannot locate resource at given url
     :raises RuntimeError: server responds code is unsuccessful
     """
+
     context = yield from Context.create_client_context()
 
     request = Message(code=GET)
@@ -667,6 +760,8 @@ class Commands():
     def do_resource(name, code='GET', *args):
         global not_alert
         not_alert = True
+        global start
+        start = 0
         """
         General implementation of resource command for GET/PUT
 
@@ -711,6 +806,7 @@ class Commands():
 
                             print("Observation running forever...")
                             print("Press Ctrl + c to end observation")
+                            start = datetime.datetime.now()
                             loop.run_until_complete(observe_impl(url))
                            
                         finally:
@@ -749,12 +845,13 @@ def client_console():
     """
     global run_demo
     global grp
+    global graph
 
     # Probe server first
     print("\nConnecting to server {}...".format(server_IP))
     # Initialization will be blocked here if server not available
     yield from Commands.do_probe()
-
+    
     try:
         grp = create_grouph5()
     except Exception as e:
@@ -775,7 +872,7 @@ def client_console():
     # Print general info and help menu on console when client starts
     print("Initializing command prompt...\n")
     Commands.do_help()
-
+    graph = False
     # Start acquiring user input
     while True:
         cmdline = input(">>>")
@@ -788,7 +885,7 @@ def client_console():
         #print("cmd = {}".format(cmd_parts))
         cmd = cmd_parts[0]
         args = cmd_parts[1:]
-
+       
         try:
             method = getattr(Commands, 'do_' + cmd)
         except AttributeError:
@@ -813,7 +910,7 @@ def client_console():
                 print("Error: {}".format(e))
 
 
-def main():
+def main(argv):
     """
     Main function of the client program
 
@@ -832,22 +929,36 @@ def main():
     global client_event_loop
     global not_alert
     global plotting
+    global graph
 
-     # TODO: **resource info is better acquired from server, provided server's IP** probably done with the addition of the lines above
+    import getopt
    
-# Given the server's IP, the username and password, acquire the configuration json file using sftp and store it into the client folder until the next program execution (It's a little bit slow, maybe it will be necessary to optimize this feature
+# Given the server's IP as parameter, the username and password, acquire the configuration json file using sftp and store it into the client folder until the next program execution (It's a little bit slow, maybe it will be necessary to optimize this feature
 
     not_alert = True
     plotting, = plt.plot([], [])
-    print(plotting)
+    graph = False
+    try:
+        opts, args = getopt.getopt(argv, "hs", ["help", "server_ip="])
+    except getopt.GetoptError:
+        print ("mod_client_stdio.py -s <server_ip>")
+        sys.exit(1)
+    for opt, arg in opts:
+        if opt == '-h':
+            print ("mod_client_stdio.py --server_ip <server_ip>")
+            sys.exit()
+        elif opt in ('-s', "--server_ip"):
+            server_IP = arg
+
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect('192.168.2.20', username='pi', password = 'raspberry')
+        ssh.connect(server_IP, username='pi', password = 'raspberry')
         sftp = ssh.open_sftp()
         sftp.get('POEModule-master/POEModule-master/config.json', 'config.json') 
         sftp.close()
         ssh.close()
+
         with open('config.json') as config_file:
             data = json.load(config_file)
             server_IP = data['server']['IP']
@@ -860,8 +971,9 @@ def main():
             for r in resources:
                 if 'active' not in resources[r]:
                     resources[r]['active'] = False
+
     except Exception as e:
-        print("Failed to parse config file form server: {}".format(e))
+        print("Failed to parse config file from server: {}".format(e))
         print("Exiting client!!!")
         h5_file.close()
         return
@@ -870,19 +982,19 @@ def main():
 
     if run_demo is True and demo_config is True:
         # Setup octave for data visualization and storage
-        print("Initializing Octave database and visualizer...")
+        #print("Initializing Octave database and visualizer...")
         octave.addpath('./')
         try:
             octave.demo_init(data_file)
             # Wait for Octave initialization to complete
             time.sleep(0.5)
         except Exception as e:
-            print("Failed to initialize demo script: {}".format(e))
-            print("Disabling Octave script...")
+         #   print("Failed to initialize demo script: {}".format(e))
+        #    print("Disabling Octave script...")
             run_demo = False
     else:
         # Turn off demo if oct2py module not present or config to not demo
-        print("Disabling Octave script...")
+       # print("Disabling Octave script...")
         run_demo = False
 
     try:
@@ -896,4 +1008,4 @@ def main():
         print("{}".format(e))
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])

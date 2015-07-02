@@ -162,7 +162,7 @@ def create_comptype(name, jpl):
 def store_data(dset, jpl):
     """
     Create a new tuple and store the obtained data from sensors in the datasets, identifying 
-    the column by the json file received as response from the server.
+    the column by the json file received as response from the server. Also, enables the data visualization and the smart power managent system.
     """
     global not_alert
     global plotting
@@ -173,6 +173,7 @@ def store_data(dset, jpl):
     global start
     global server_IP
 
+	# Indicates when the alert is activated (True = Alert off/ Falser = Alert on)
     not_alert = True
 
     with open('config.json') as config_file:
@@ -181,9 +182,11 @@ def store_data(dset, jpl):
         for x in range(0, length-1):
             if jpl['name'] == config['sensors'][x]['name']:
                 sensor = config['sensors'][x]
-    if graph == False:
+				
+    # Creates the data visualization if it is not enabled
+    if (graph == False) & (visualize = True):
+	    # Plots the data visualization
         plt.figure(1)
-
         plt.subplot(211)
         plotting, = plt.plot(dset[jpl['name']], color='black')
         plt.ylim([(sensor['min_limit']*2), (sensor['max_limit']*2)])
@@ -195,6 +198,7 @@ def store_data(dset, jpl):
         plt.axhline(y=sensor['min_limit'], c='red')
         ax = plt.gca()
         
+		#Plots the power in the additional module (Not sure if is necessary to be enabled for next steps)
         textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[jpl['name']]), max(dset[jpl['name']]), min(dset[jpl['name']])) 
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
         text = ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
@@ -214,9 +218,12 @@ def store_data(dset, jpl):
     for key in jpl.keys():
         if key == 'data':
             for key in data.keys():
+			
                 dset[key, dset.len()-1] = data[jpl['name']]
                 avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
                 avg = float(avg_trunc)
+				
+				# Connect to switch and reads the power available in the second module
                 ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                 ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
@@ -224,6 +231,7 @@ def store_data(dset, jpl):
                 power = float(stdout.read()[310: 320])
                 ssh.close() 
        
+	            #Checks if alert is on, otherwise verify if data is in the normal range
                 if (not_alert is True) & (power == 0):
                     print("Starting 2nd Module {}".format(datetime.datetime.now()))
                     not_alert = alert(data, dset)  
@@ -235,6 +243,8 @@ def store_data(dset, jpl):
                         next = len(plotting.get_xdata()) + 1
                 else:
                         next = plotting.get_xdata()+1
+						
+						
                 plotting2.set_ydata(numpy.insert(plotting2.get_ydata(), len(plotting2.get_ydata()), power))
                 plotting2.set_xdata(numpy.insert(plotting2.get_xdata(), len(plotting2.get_xdata()), len(plotting2.get_xdata())+1))
                 plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
@@ -253,11 +263,11 @@ def store_data(dset, jpl):
                 print('') 
     dset['average', dset.len()-1] = avg       
     dset.resize(dset.len()+1, 0)
+	
     now = datetime.datetime.now()
-
     diff = now-start
-    print(diff)
-
+	
+	#Disable the additional model after 30 seconds (Need to include configurable time)
     if float(diff.total_seconds()) > 30 :
           ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
           ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -325,8 +335,13 @@ def check_type(data):
     else:
         print("It was not possible to identify this data format")
 
+		
+
 def alert(data, dset): 
- 
+
+"""
+Verify if is necessary to trigger the alert, activating the additional module using a SSH connection
+""" 
     global plotting
     global plotting2
     global ax
@@ -686,7 +701,9 @@ class Commands():
         :raises RuntimeError: POST request failed
         """
         import argparse
-
+        
+		global visualize 
+		 
         p = argparse.ArgumentParser(description=__doc__)
         p.add_argument('-c', '--channel', help="ADC channel this resource is connected to")
         p.add_argument('-u', '--url', help="new URL for the resource to post")
@@ -694,6 +711,7 @@ class Commands():
         p.add_argument('-m', '--max', help="higher bound of resource data")
         p.add_argument('-o', '--observe', help="Set the resource to be observable", action='store_true')
         p.add_argument('-f', '--frequency', help="Set the frequency of observable")
+		p.add_argument('-v', '--visualization', help="Enable the data visualization")
 
         options = p.parse_args(args)
 
@@ -736,7 +754,12 @@ class Commands():
                     frequency = int(options.frequency)
                 except ValueError as e:
                     raise ValueError("Observing frequency must be integer")
-
+            
+			if options.visualization:
+			    try:
+				    visualize = True
+				except ValueError as e:
+                    raise ValueError("Visualization is not available")
         # add new resource to resource list
         resources[name] = {'url': url,
                            'channel': channel,
@@ -930,7 +953,8 @@ def main(argv):
     global not_alert
     global plotting
     global graph
-
+    global visualize 
+	
     import getopt
    
 # Given the server's IP as parameter, the username and password, acquire the configuration json file using sftp and store it into the client folder until the next program execution (It's a little bit slow, maybe it will be necessary to optimize this feature
@@ -938,6 +962,8 @@ def main(argv):
     not_alert = True
     plotting, = plt.plot([], [])
     graph = False
+	visualize = False
+	
     try:
         opts, args = getopt.getopt(argv, "hs", ["help", "server_ip="])
     except getopt.GetoptError:

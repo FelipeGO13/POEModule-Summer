@@ -1,6 +1,17 @@
+pip3 install the following libraries:
 aiocoap
-asyncio
-oct2py
-RPi
-RPiMock
 spidev
+Cython
+h5py (better to download from github rather than pip install, or the observation may not work properly)
+matplotlib
+paramiko
+
+apt-get install:
+python3-dev
+libhdf5-serial-dev
+
+h5tools download:
+1. download h5tools from http://www.space-research.org/hdf5/hdf5.htm
+2. cp src/napi.h to src/nexus/
+3. make h5tools with one of the options provided in documentation
+4. cp gnu/h5merge to /usr/bin/

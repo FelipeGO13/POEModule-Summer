@@ -184,7 +184,7 @@ def store_data(dset, jpl):
                 sensor = config['sensors'][x]
 				
     # Creates the data visualization if it is not enabled
-    if (graph == False) & (visualize = True):
+    if (graph == False) & (visualize == True):
 	    # Plots the data visualization
         plt.figure(1)
         plt.subplot(211)

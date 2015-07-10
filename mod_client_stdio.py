@@ -1,10 +1,11 @@
 """
     Created on November 22, 2014
-    Last modified on July 8, 2015 by Felipe Gabriel Osorio
+    Last modified on July 7, 2015 by Felipe Gabriel Osorio
     
     @author: Ruibing Zhao
     @author: Yaodong Yu
-	
+    @author: Felipe Gabriel Osorio
+
     This is a command line tool developed as a CoAP client for demonstration of UBC ECE 2014 Capstone Project #94.
     The implementation of this CoAP client is based on aiocoap module
 
@@ -38,25 +39,25 @@ from defs import *
 server_IP = 'localhost'
 # Alert is not on
 not_alert = True
-# timer to disable the additional modules
-timer = 0
 # Plot is initialized with empty axis 
 plotting, = plt.plot([], [])
 # resources independent from hardware implementation
 resources = {'hello': {'url': 'hello'},
              'time': {'url': 'time'}}
 # Octave plotting data file
-data_file = 'data.txt'
+#data_file = 'data.txt'
 # Status of the module (main or additional)
 status = 'main'
 # flag to enable Octave plotting
 run_demo = False
+# visualization time  (default is 30 seconds)
+timer = 30
 # ssh connection to get config file from server
 ssh = paramiko.SSHClient() 
 # asyncio event loop for																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																 client
 # Keep a record so that it can be switched back after observation
 client_event_loop = asyncio.get_event_loop()
-
+"""
 try:
     from oct2py import octave
 except Exception as e:
@@ -64,7 +65,7 @@ except Exception as e:
     run_demo = False
 else:
     run_demo = True
-
+"""
 # logging configuration
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
@@ -170,7 +171,7 @@ def store_data(dset, jpl):
     global start
     global server_IP
 
-	# Indicates when the alert is activated (True = Alert off/ False = Alert on)
+    # Indicates when the alert is activated (True = Alert off/ False = Alert on)
     not_alert = True
 
     with open('config {}.json'.format(server_IP)) as config_file:
@@ -197,7 +198,7 @@ def store_data(dset, jpl):
         plt.axhline(y=sensor['min_limit'], c='red')
         ax = plt.gca()
         
-		#Plots the power in the additional module (Not sure if is necessary to be enabled for next steps/ commented by now)
+		#Plots the power in the additional module (Not sure if is necessary to be enabled for next steps)
         textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[jpl['name']]), max(dset[jpl['name']]), min(dset[jpl['name']])) 
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
         text = ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
@@ -223,31 +224,31 @@ def store_data(dset, jpl):
                 avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
                 avg = float(avg_trunc)
 
+                """
                 if status == 'main':
-                    print('reading power of additional modules')
-		# Connect to switch and reads the power available in the second module
+        
+		    # Connect to switch and reads the power available in the second module
                     ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
                     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                     ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
                     stdin, stdout, stderr = ssh.exec_command("show power inline gi 2/5")
                     power = float(stdout.read()[310: 320])
                     ssh.close() 
-           
+                """
     
 	        #Checks if alert is on, otherwise verify if data is in the normal range
-                if (not_alert is True) :
-                    print("Starting 2nd Module {}".format(datetime.datetime.now()))
+                """
+                if (not_alert is True) & (power == 0) :
                     not_alert = alert(data, dset)  
                     start = datetime.datetime.now()
                 else:
                     print("alert not activated")    
-    
+                """
                 if type(plotting.get_xdata()) is not int:
                         next = len(plotting.get_xdata()) + 1
                 else:
                         next = plotting.get_xdata()+1
-						
-						
+									
                 #plotting2.set_ydata(numpy.insert(plotting2.get_ydata(), len(plotting2.get_ydata()), power))
                 #plotting2.set_xdata(numpy.insert(plotting2.get_xdata(), len(plotting2.get_xdata()), len(plotting2.get_xdata())+1))
                 plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
@@ -269,11 +270,11 @@ def store_data(dset, jpl):
     dset.resize(dset.len()+1, 0)
 
     now = datetime.datetime.now()
-    diff = now-start
+    #diff = now-start
 	
-
+    """
     #Disable the additional model after 30 seconds (Need to include configurable time)
-    if float(diff.total_seconds()) > 30:
+    if (float(diff.total_seconds()) > timer) & (status == 'main'):
           ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
           ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
           ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
@@ -283,7 +284,7 @@ def store_data(dset, jpl):
           start = datetime.datetime.now()
     else:
         print("Second module still working")
-
+    """
     print("Data successfully recorded in the database!")
 
 #Testing dynamic datatype formatting
@@ -340,7 +341,7 @@ def check_type(data):
     else:
         print("It was not possible to identify this data format")
 
-		
+
 
 def alert(data, dset): 
 
@@ -351,8 +352,8 @@ def alert(data, dset):
     global plotting2
     global ax
     global text
-    
-    print('test')
+    global obs_resource
+
     with open('config {}.json'.format(server_IP)) as config_file:
         config = json.load(config_file)
         length = len(config['sensors'])     
@@ -362,50 +363,20 @@ def alert(data, dset):
                     sensor = config['sensors'][x]
                     if dset.attrs.__contains__(key):
                         if (float(data[key]) > sensor['max_limit']) | (float(data[key]) < sensor['min_limit']):
-						
-						    ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
-                            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                            ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
-                            stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe.tcl")
-                            print("Second module enabled!")
-                            ssh.close()  
-							
-                            add_num = len(config['server']['additional modules'])
-                            if add_num == 1:
-                                ip = config['server']['additional modules'][0]['ip']
-                                subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdio.py', '--server_ip', '{}'.format(ip)])
-                            else:
-                                for y in range(0, add_num-1):
-                                    ip = config['server']['additional modules'][y]['ip']
-                                    subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdio.py', '--server_ip', '{}'.format(ip)])
-                            
+                            if status == 'main':
+                                add_num = len(config['server']['additional modules'])
+                                if add_num == 1:
+                                    ip = config['server']['additional modules'][0]['ip']
+                                    subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
                               
-                            
-							"""
-                            plt.figure(1)
-                            
-                            plt.subplot(211)
-                            plotting, = plt.plot(dset[key], color='black')
-                            plt.subplot(212)
-                            plotting2, = plt.plot(plotting.get_xdata(),test, color='blue')
-                            plt.ylim([(sensor['min_limit']*2), (sensor['max_limit']*2)])
-                            plt.xlabel("Number of measurements")
-                            plt.ylabel(key)
-                            plt.title("Real-Time Visualization")
-                            ax = plt.gca()
-                            plt.axhline(y=sensor['max_limit'], c='red')
-                            plt.axhline(y=sensor['min_limit'], c='red')
-                            textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[key]), max(dset[key]), min(dset[key])) 
-                            props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
-                            text = ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
-                            plt.show(block=False)
-                            """
-							
-                            print("2nd Module enabled: {}".format(datetime.datetime.now()))
+                                else:
+                                    for y in range(0, add_num-1):
+                                        ip = config['server']['additional modules'][y]['ip']
+                                        subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
+                            else:
+                                print('Alert activated!')
                             return False
     return True
-
-
 
 def plot_octave(jpayload):
     # TODO: plotting function should be more dynamic, to match the configurability of the rest of the program
@@ -898,6 +869,8 @@ def client_console():
     global run_demo
     global grp
     global graph
+    global obs_resource
+    global obs_activated
 
     # Probe server first
     print("\nConnecting to server {}...".format(server_IP))
@@ -921,15 +894,24 @@ def client_console():
     # Restore plotting configuration
     run_demo = run_demo_cache
 
+    print(obs_activated)
     # Print general info and help menu on console when client starts
+    if obs_activated == True:
+         print(obs_activated)
+         print(obs_resource)
+         yield from Commands.do_resource(obs_resource, 'GET', '-o')
+         
+
     print("Initializing command prompt...\n")
     Commands.do_help()
     graph = False
     # Start acquiring user input
+      
+
     while True:
         cmdline = input(">>>")
         cmd_parts = cmdline.split()
-
+        
         # Handle empty input
         if len(cmd_parts) is 0:
             continue
@@ -983,26 +965,30 @@ def main(argv):
     global graph
     global visualize 
     global h5_file
+    global obs_resource
+    global obs_activated
 	
-    import getopt
+    import argparse
    
 # Given the server's IP as parameter, the username and password, acquire the configuration json file using sftp and store it into the client folder until the next program execution (It's a little bit slow, maybe it will be necessary to optimize this feature
 
     not_alert = True
     plotting, = plt.plot([], [])
     graph = False
+        	 
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('-s', '--server_ip', help="IP of the required module")
+    p.add_argument('-o', '--observe', help="Observate a required resource")
 
-    try:
-        opts, args = getopt.getopt(argv, "hs:p", ["help", "server_ip=", "parallel"])
-    except getopt.GetoptError:
-        print ("mod_client_stdio.py -s <server_ip>")
-        sys.exit(1)
-    for opt, arg in opts:
-        if opt == '-h':
-            print ("mod_client_stdio.py --server_ip <server_ip>")
-            sys.exit()
-        elif opt in ('-s', "--server_ip"):
-            server_IP = arg
+    options = p.parse_args(argv)
+
+    if options.server_ip:
+        server_IP = options.server_ip
+    if options.observe:
+        obs_activated = True  
+        obs_resource = options.observe
+    else:
+        obs_activated = False 
 
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
@@ -1012,13 +998,14 @@ def main(argv):
         sftp.get('POEModule-master/POEModule-master/config.json', 'config {}.json'.format(server_IP)) 
         sftp.close()
         ssh.close()
-
+       
         with open('config {}.json'.format(server_IP)) as config_file:
             data = json.load(config_file)
             server_IP = data['server']['IP']
-            data_file = data['client']['datafile']
-            demo_config = data['client']['demo']
+           # data_file = data['client']['datafile']
+            #demo_config = data['client']['demo']
             status = data['server']['status']
+            timer = data['server']['visualization time']
             # re-format each sensor entry for client to use
             for r in data['sensors']:
                 resources[r['name']] = {i: r[i] for i in r if i != 'name'}

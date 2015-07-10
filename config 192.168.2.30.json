@@ -1,0 +1,145 @@
+{
+  "server": {
+    "IP": "192.168.2.30",
+    "visualization time": 30,
+    "status": "additional",
+    "metadata": 
+    {
+      "Module type": "Raspberry Pi B+ V1.2",
+      "Name": "RPi1",
+	  "Location": "Kaiser Building 3080",
+	  "Installation date": "6/10/2015"
+    }
+  },
+  "client": {
+    "name": "myLaptop",
+    "datafile": "data.txt",
+    "demo": true
+  },
+  "sensors": [
+    {
+      "name": "hello",
+      "url": "hello",
+      "metadata":
+      {
+       "Sensor ID": "H1-RP1",
+       "Sensor Type": "Virtual testing sensor"
+      }
+    },
+    {
+      "name": "time",
+      "url": "time",
+      "active": true,
+      "metadata":
+      { 
+       "Sensor ID": "T1-RP1",
+       "Sensor Type": "Virtual timing sensor"
+      }
+    },
+    {
+      "name": "temperature",
+      "url": "hygrothermo/temperature",
+      "active": true,
+      "max_limit": 50,
+      "min_limit": 0,
+      "metadata": 
+      {
+       "Sensor ID": "Temp1-RPI",
+       "Sensor Type": "Hygro Thermometer SHT15",
+       "time": "Date and time of the measurement",
+       "temperature": "Temperature of this location in Celsius",
+       "active": "Status of this sensor"
+      }
+    },
+    {
+      "name": "humidity",
+      "url": "hygrothermo/humidity",
+      "active": true,
+      "max_limit": 80,
+      "min_limit": 0,
+      "metadata": 
+      {
+       "Sensor ID": "Hum1-RP1",
+       "Sensor Type": "Hygro Thermometer SHT15",
+       "time": "Date and time of the measurement",
+       "humidity": "Humidity of this location expressed in percentage",
+       "active": "Status of this sensor"
+      }
+    },
+    {
+      "name": "AccX",
+      "url": "acceleration/x",
+      "active": true,
+      "period": 3,
+      "min": -3,
+      "max": 3,
+      "channel": 0,
+      "max_limit": 0.5,
+      "min_limit": -0.5,
+       "metadata": 
+      {
+       "Sensor ID": "AccX1-RP1",
+       "Sensor Type": "Accelerometer ADXL335 - X-Axis",
+       "time": "Date and time of the measurement",
+       "AccX": "X position of this sensor in this location",
+       "active": "Status of this sensor"
+      }
+    },
+    {
+     "name": "AccY",
+     "url": "acceleration/y",
+     "active": true,
+     "period": 3,
+     "min": -3,
+     "max": 3,
+     "channel": 1,	
+     "max_limit":0.5,
+     "min_limit":-0.5,
+     "metadata": 
+      {
+       "Sensor ID": "AccY1-RP1",
+       "Sensor Type": "Accelerometer ADXL335 - Y-Axis",
+       "time": "Date and time of the measurement",
+       "AccY": "Y position of this sensor in this location",
+       "active": "Status of this sensor"
+      } 
+    },
+    {
+     "name": "AccZ",
+     "url": "acceleration/z",
+     "active": true,
+     "period": 3,
+     "min": -3,
+     "max": 3,
+     "channel": 2,
+     "max_limit": 0.5,
+     "min_limit": -0.5,
+     "metadata": 
+      {
+       "Sensor ID": "AccZ1-RP1",
+       "Sensor Type": "Accelerometer ADXL335 - Z-Axis",
+       "time": "Date and time of the measurement",
+       "AccZ": "Z position of this sensor in this location",
+       "active": "Status of this sensor"
+      }
+    },
+    { 
+     "name": "JoyX",
+     "url": "joystick/x",
+     "active": true,
+     "period": 3,
+     "min": -3,
+     "max": 3,
+     "channel": 3
+    },
+    {
+     "name": "JoyY",
+     "url": "joystick/y",
+     "active": true,
+     "period": 3,
+     "min": -3,
+     "max": 3,
+     "channel": 4
+    }
+  ]
+}

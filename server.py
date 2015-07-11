@@ -13,19 +13,20 @@
     Python3.4 is required
 """
 
-import logging
 import json
-
 import asyncio
+import pexpect
+import subprocess
 
 import aiocoap
 from aiocoap.resource import Site
 
+import logging
 import resources as r
 
 # logging setup
-logging.basicConfig(level=logging.INFO)
-logging.getLogger('coap-server').setLevel(logging.DEBUG)
+logger = logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('coap-server').setLevel(logging.DEBUG)
 # TODO: Add logging function to replace "print" in the code
 
 
@@ -41,11 +42,27 @@ def main():
     root.add_resource(('.well-known', 'core'), r.CoreResource(root))
 
     # temporarily disabled
-    #root.add_resource(('alert',), r.Alert())
+   #root.add_resource(('alert',), r.Alert())
 
-    with open('config.json') as data_file:
-        sensor_list = json.load(data_file)['sensors']
-    
+    with open('/home/pi/POEModule-master/POEModule-master/config.json') as data_file:
+        server = json.load(data_file)
+        sensor_list = server['sensors']
+   
+    poe_config = open('/home/pi/POEModule-master/POEModule-master/poe_test.tcl', 'w+')
+    for mod in server['server']['additional modules']:
+        poe_config.write('ios_config "interface gi {}" "power inline four-pair forced" "shutdown" "no shutdown"\n'.format(mod['port']))
+        poe_config.write('exec "show power inline gi {}"\n'.format(mod['port']))       
+    poe_config.close()    
+    child = pexpect.spawn('scp %s %s@%s:%s' % ('/home/pi/POEModule-master/POEModule-master/poe_test.tcl', 'group94', '192.168.2.100', 'poe_test.tcl'))
+    i = child.expect(['Password:', r"yes/no"], timeout=30)
+    if i == 0:
+        child.sendline('upoe94')
+    elif i == 1:
+        child.sendline("yes")
+        child.expect("Password:", timeout=30)
+        child.sendline('upoe94')
+    data = child.read()
+    child.close()
     for sensor in sensor_list:
         # Known sensors that has been pre-defined
         if sensor['name'] == 'hello':

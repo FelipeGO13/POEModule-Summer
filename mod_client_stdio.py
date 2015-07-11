@@ -14,6 +14,7 @@
     Python3.4 is required
 """
 
+
 import sys
 import time
 import logging
@@ -50,8 +51,6 @@ resources = {'hello': {'url': 'hello'},
 status = 'main'
 # flag to enable Octave plotting
 run_demo = False
-# visualization time  (default is 30 seconds)
-timer = 30
 # ssh connection to get config file from server
 ssh = paramiko.SSHClient() 
 # asyncio event loop for																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																 client
@@ -170,6 +169,8 @@ def store_data(dset, jpl):
     global graph
     global start
     global server_IP
+    global timer
+    global terminal
 
     # Indicates when the alert is activated (True = Alert off/ False = Alert on)
     not_alert = True
@@ -184,11 +185,7 @@ def store_data(dset, jpl):
                 sensor = config['sensors'][x]
 				
     # Creates the data visualization if it is not enabled
-<<<<<<< HEAD
-    if (graph == False) & (visualize == True):
-=======
     if graph == False:
->>>>>>> 329873663f3c25ef6863c85c81dbd965c6a4a665
 	    # Plots the data visualization
         plt.figure(1)
         #plt.subplot(211)
@@ -228,7 +225,7 @@ def store_data(dset, jpl):
                 avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
                 avg = float(avg_trunc)
 
-                """
+                
                 if status == 'main':
         
 		    # Connect to switch and reads the power available in the second module
@@ -238,16 +235,16 @@ def store_data(dset, jpl):
                     stdin, stdout, stderr = ssh.exec_command("show power inline gi 2/5")
                     power = float(stdout.read()[310: 320])
                     ssh.close() 
-                """
+                
     
 	        #Checks if alert is on, otherwise verify if data is in the normal range
-                """
+                
                 if (not_alert is True) & (power == 0) :
                     not_alert = alert(data, dset)  
                     start = datetime.datetime.now()
                 else:
                     print("alert not activated")    
-                """
+                
                 if type(plotting.get_xdata()) is not int:
                         next = len(plotting.get_xdata()) + 1
                 else:
@@ -274,21 +271,23 @@ def store_data(dset, jpl):
     dset.resize(dset.len()+1, 0)
 
     now = datetime.datetime.now()
-    #diff = now-start
-	
-    """
+    diff = now-start
+    print(float(diff.total_seconds()))
+    print(timer)
     #Disable the additional model after 30 seconds (Need to include configurable time)
-    if (float(diff.total_seconds()) > timer) & (status == 'main'):
+    if float(diff.total_seconds()) > timer:
+          print('disabling second')
           ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
           ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
           ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
           stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
           print("Second module disabled!")
+          terminal.kill()
           ssh.close() 
           start = datetime.datetime.now()
     else:
         print("Second module still working")
-    """
+    
     print("Data successfully recorded in the database!")
 
 #Testing dynamic datatype formatting
@@ -357,7 +356,8 @@ def alert(data, dset):
     global ax
     global text
     global obs_resource
-
+    global terminal
+    
     with open('config {}.json'.format(server_IP)) as config_file:
         config = json.load(config_file)
         length = len(config['sensors'])     
@@ -365,18 +365,26 @@ def alert(data, dset):
             for x in range(0, length-1):
                 if key == config['sensors'][x]['name']:
                     sensor = config['sensors'][x]
+                    obs_resource = key
                     if dset.attrs.__contains__(key):
                         if (float(data[key]) > sensor['max_limit']) | (float(data[key]) < sensor['min_limit']):
                             if status == 'main':
+                                ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+                                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                                ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+                                stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe.tcl")
+                                print("Second module enabled!")
+                                ssh.close() 
+
                                 add_num = len(config['server']['additional modules'])
                                 if add_num == 1:
                                     ip = config['server']['additional modules'][0]['ip']
-                                    subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
+                                    terminal = subprocess.Popen(['gnome-terminal', '-x', 'python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
                               
                                 else:
                                     for y in range(0, add_num-1):
                                         ip = config['server']['additional modules'][y]['ip']
-                                        subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
+                                        terminal = subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
                             else:
                                 print('Alert activated!')
                             return False
@@ -659,6 +667,14 @@ class Commands():
         print("Goodbye!")
         print("Exiting...")
         global h5_file
+        ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+        stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
+        print("Second module disabled!")
+        ssh.close() 
+        start = datetime.datetime.now()
+
         if status == 'main':
             h5_file.flush()
             with open('config {}.json'.format(server_IP)) as config_file:
@@ -909,6 +925,13 @@ def client_console():
     print("Initializing command prompt...\n")
     Commands.do_help()
     graph = False
+    ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+    stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
+    print("Second module disabled!")
+    ssh.close() 
+    start = datetime.datetime.now()
     # Start acquiring user input
       
 
@@ -971,6 +994,7 @@ def main(argv):
     global h5_file
     global obs_resource
     global obs_activated
+    global timer
 	
     import argparse
    
@@ -993,6 +1017,10 @@ def main(argv):
         obs_resource = options.observe
     else:
         obs_activated = False 
+    if obs_activated == True:
+        print('start timer')
+        time.sleep(100)
+        print ('time is over')
 
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
@@ -1010,6 +1038,7 @@ def main(argv):
             #demo_config = data['client']['demo']
             status = data['server']['status']
             timer = data['server']['visualization time']
+            print(timer)
             # re-format each sensor entry for client to use
             for r in data['sensors']:
                 resources[r['name']] = {i: r[i] for i in r if i != 'name'}

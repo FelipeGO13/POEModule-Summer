@@ -14,7 +14,6 @@
     Python3.4 is required
 """
 
-
 import sys
 import time
 import logging
@@ -47,8 +46,7 @@ resources = {'hello': {'url': 'hello'},
              'time': {'url': 'time'}}
 # Octave plotting data file
 #data_file = 'data.txt'
-# Status of the module (main or additional)
-status = 'main'
+
 # flag to enable Octave plotting
 run_demo = False
 # ssh connection to get config file from server
@@ -171,6 +169,8 @@ def store_data(dset, jpl):
     global server_IP
     global timer
     global terminal
+    global power
+    global status
 
     # Indicates when the alert is activated (True = Alert off/ False = Alert on)
     not_alert = True
@@ -191,7 +191,7 @@ def store_data(dset, jpl):
         #plt.subplot(211)
         plotting, = plt.plot(dset[jpl['name']], color='black')
         plt.ylim([(sensor['min_limit']*2), (sensor['max_limit']*2)])
-        plt.xlim(len(dset[jpl['name']]), 100)
+        #plt.xlim(len(dset[jpl['name']]), 100)
         plt.xlabel("Number of measurements")
         plt.ylabel(jpl['name'])
         plt.title("Real-Time Visualization {}".format(server_IP))
@@ -225,16 +225,14 @@ def store_data(dset, jpl):
                 avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
                 avg = float(avg_trunc)
 
-                
-                if status == 'main':
-        
-		    # Connect to switch and reads the power available in the second module
-                    ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
-                    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                    ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
-                    stdin, stdout, stderr = ssh.exec_command("show power inline gi 2/5")
-                    power = float(stdout.read()[310: 320])
-                    ssh.close() 
+                      
+		# Connect to switch and reads the power available in the second module
+                ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+                stdin, stdout, stderr = ssh.exec_command("show power inline gi 2/5")
+                power = float(stdout.read()[310: 320])
+                ssh.close() 
                 
     
 	        #Checks if alert is on, otherwise verify if data is in the normal range
@@ -273,18 +271,23 @@ def store_data(dset, jpl):
     now = datetime.datetime.now()
     diff = now-start
     print(float(diff.total_seconds()))
-    print(timer)
+
     #Disable the additional model after 30 seconds (Need to include configurable time)
     if float(diff.total_seconds()) > timer:
-          print('disabling second')
-          ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
-          ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-          ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
-          stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
-          print("Second module disabled!")
-          terminal.kill()
-          ssh.close() 
-          start = datetime.datetime.now()
+          print (status)
+          if status in 'additional':
+              print('finishing data collection')
+              h5_file.close()
+              sys.exit(0)
+          else:
+              ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+              ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+              ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+              stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
+              print("Second module disabled!")
+              terminal.kill()
+              ssh.close() 
+              start = datetime.datetime.now()
     else:
         print("Second module still working")
     
@@ -666,14 +669,17 @@ class Commands():
         """
         print("Goodbye!")
         print("Exiting...")
+        global power
         global h5_file
-        ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
-        stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
-        print("Second module disabled!")
-        ssh.close() 
-        start = datetime.datetime.now()
+        global status
+
+        if power != 0:
+            ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+            stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
+            print("Second module disabled!")
+            ssh.close() 
 
         if status == 'main':
             h5_file.flush()
@@ -891,6 +897,7 @@ def client_console():
     global graph
     global obs_resource
     global obs_activated
+    global power
 
     # Probe server first
     print("\nConnecting to server {}...".format(server_IP))
@@ -914,24 +921,22 @@ def client_console():
     # Restore plotting configuration
     run_demo = run_demo_cache
 
-    print(obs_activated)
     # Print general info and help menu on console when client starts
     if obs_activated == True:
-         print(obs_activated)
-         print(obs_resource)
          yield from Commands.do_resource(obs_resource, 'GET', '-o')
          
 
     print("Initializing command prompt...\n")
     Commands.do_help()
     graph = False
-    ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
-    stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
-    print("Second module disabled!")
-    ssh.close() 
-    start = datetime.datetime.now()
+    if power != 0:
+        ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+        stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
+        print("Second module disabled!")
+        ssh.close() 
+        start = datetime.datetime.now()
     # Start acquiring user input
       
 
@@ -995,7 +1000,8 @@ def main(argv):
     global obs_resource
     global obs_activated
     global timer
-	
+    global status
+    
     import argparse
    
 # Given the server's IP as parameter, the username and password, acquire the configuration json file using sftp and store it into the client folder until the next program execution (It's a little bit slow, maybe it will be necessary to optimize this feature
@@ -1018,9 +1024,7 @@ def main(argv):
     else:
         obs_activated = False 
     if obs_activated == True:
-        print('start timer')
-        time.sleep(100)
-        print ('time is over')
+        time.sleep(50)
 
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))

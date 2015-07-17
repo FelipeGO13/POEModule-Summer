@@ -44,25 +44,12 @@ plotting, = plt.plot([], [])
 # resources independent from hardware implementation
 resources = {'hello': {'url': 'hello'},
              'time': {'url': 'time'}}
-# Octave plotting data file
-#data_file = 'data.txt'
-
-# flag to enable Octave plotting
-run_demo = False
 # ssh connection to get config file from server
 ssh = paramiko.SSHClient() 
-# asyncio event loop for																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																 client
+# asyncio event loop for																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																															 client
 # Keep a record so that it can be switched back after observation
 client_event_loop = asyncio.get_event_loop()
-"""
-try:
-    from oct2py import octave
-except Exception as e:
-    print("{}: Not running demo files".format(e))
-    run_demo = False
-else:
-    run_demo = True
-"""
+
 # logging configuration
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
@@ -124,44 +111,13 @@ def insert_dataset(grp, name, comp_type):
     except Exception as e:
         print("Failed to create a dataset! {}".format(e))
 
-#Testing fixed datatype formatting
-    """
-    Hard coded formatting for the compound type that defines the datatypes of the dataset columns
-    """
-"""
-def create_comptype(name, jpl):
-    global comp_type
-    if jpl['name'] == 'temperature':
-        comp_type = numpy.dtype([('time', 'S20'),('temperature', 'f'), ('active', 'S10')])
-    elif jpl['name'] == 'humidity':
-        comp_type = numpy.dtype([('time', 'S20'),('humidity', 'f'), ('active', 'S10')])
-    elif 'Acc' in jpl['name']:
-        if 'X' in jpl['name']:
-            comp_type = numpy.dtype([('time', 'S20'),('AccX', 'f'), ('rate', 'i'), ('active', 'S10')])
-        elif 'Y' in jpl['name']:
-            comp_type = numpy.dtype([('time', 'S20'),('AccY', 'f'), ('rate', 'i'), ('active', 'S10')])
-        elif 'Z' in jpl['name']:
-            comp_type = numpy.dtype([('time', 'S20'),('AccZ', 'f'), ('rate', 'i'), ('active', 'S10')])
-    elif jpl['name'] == 'hello':
-            comp_type = numpy.dtype([('time', 'S20'),('hello', 'S30')])
-    elif 'Joy' in jpl['name']:
-        if 'X' in jpl['name']:
-            comp_type = numpy.dtype([('time', 'S20'),('JoyX', 'f'), ('rate', 'i')])
-        elif 'Y' in jpl['name']:
-            comp_type = numpy.dtype([('time', 'S20'),('JoyY', 'f'), ('rate', 'i')])
-    else:
-        comp_type = numpy.dtype([('test', 'f')])
-    return comp_type
-"""
-
 def store_data(dset, jpl):
     """
     Create a new tuple and store the obtained data from sensors in the datasets, identifying 
-    the column by the json file received as response from the server. Also, enables the data visualization and the smart power managent system.
+    the column by the json file received as response from the server. Also, enables the data     visualization and the smart power managent system.
     """
     global not_alert
     global plotting
-    global plotting2
     global ax
     global text
     global graph
@@ -171,7 +127,8 @@ def store_data(dset, jpl):
     global terminal
     global power
     global status
-
+    global switch_IP
+    
     # Indicates when the alert is activated (True = Alert off/ False = Alert on)
     not_alert = True
 
@@ -186,12 +143,10 @@ def store_data(dset, jpl):
 				
     # Creates the data visualization if it is not enabled
     if graph == False:
-	    # Plots the data visualization
+	# Plots the data visualization
         plt.figure(1)
-        #plt.subplot(211)
         plotting, = plt.plot(dset[jpl['name']], color='black')
         plt.ylim([(sensor['min_limit']*2), (sensor['max_limit']*2)])
-        #plt.xlim(len(dset[jpl['name']]), 100)
         plt.xlabel("Number of measurements")
         plt.ylabel(jpl['name'])
         plt.title("Real-Time Visualization {}".format(server_IP))
@@ -199,18 +154,10 @@ def store_data(dset, jpl):
         plt.axhline(y=sensor['min_limit'], c='red')
         ax = plt.gca()
         
-		#Plots the power in the additional module (Not sure if is necessary to be enabled for next steps)
         textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[jpl['name']]), max(dset[jpl['name']]), min(dset[jpl['name']])) 
         props = dict(boxstyle='round', facecolor='wheat', alpha=0.5)
         text = ax.text(0.01, 0.95, textstr, transform=ax.transAxes, fontsize=14, verticalalignment='top', bbox=props)
-        """
-        plt.subplot(212)
-        plotting2, = plt.plot(0, 0, color='blue')
-        plt.ylim(-10, 100)
-        plt.xlim(len(dset[jpl['name']]), 100)
-        plt.xlabel("Number of measurements")
-        plt.ylabel("Power in the second module (W)")
-        """
+
         plt.show(block=False)
         graph = True
 
@@ -224,17 +171,19 @@ def store_data(dset, jpl):
                 dset[key, dset.len()-1] = data[jpl['name']]
                 avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
                 avg = float(avg_trunc)
-  
-		# Connect to switch and reads the power available in the second module
-                ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
-                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
-                stdin, stdout, stderr = ssh.exec_command("show power inline gi 2/5")
-                power = float(stdout.read()[310: 320])
-                ssh.close() 
                 
+                if status == 'main':
+		    # Connect to switch and reads the power available in the second module
+                    ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+                    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    ssh.connect(switch_IP, username='group94', password = 'upoe94')
+                    stdin, stdout, stderr = ssh.exec_command("show power inline gi 2/5")
+                    power = float(stdout.read()[310: 320])
+                    ssh.close() 
+                else:
+                    power = 0
+
 	        #Checks if alert is on, otherwise verify if data is in the normal range
-                
                 if (not_alert is True) & (power == 0) :
                     not_alert = alert(data, dset)  
                     start = datetime.datetime.now()
@@ -242,12 +191,10 @@ def store_data(dset, jpl):
                     print("alert not activated")    
                 
                 if type(plotting.get_xdata()) is not int:
-                        next = len(plotting.get_xdata()) + 1
+                    next = len(plotting.get_xdata()) + 1
                 else:
-                        next = plotting.get_xdata()+1
-									
-                #plotting2.set_ydata(numpy.insert(plotting2.get_ydata(), len(plotting2.get_ydata()), power))
-                #plotting2.set_xdata(numpy.insert(plotting2.get_xdata(), len(plotting2.get_xdata()), len(plotting2.get_xdata())+1))
+                    next = plotting.get_xdata()+1
+
                 plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
                 plotting.set_xdata(numpy.insert(plotting.get_xdata(), (next-1), next))
                
@@ -268,11 +215,9 @@ def store_data(dset, jpl):
 
     now = datetime.datetime.now()
     diff = now-start
-    print(float(diff.total_seconds()))
 
     #Disable the additional model after 30 seconds (Need to include configurable time)
     if float(diff.total_seconds()) > timer:
-          print (status)
           if status in 'additional':
               print('finishing data collection')
               h5_file.close()
@@ -280,7 +225,7 @@ def store_data(dset, jpl):
           else:
               ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
               ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-              ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+              ssh.connect(switch_IP, username='group94', password = 'upoe94')
               stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
               print("Second module disabled!")
               terminal.kill()
@@ -306,7 +251,6 @@ def create_comptype(jpl):
     types.extend([None]*len(jpl.keys()))
     a = []
     for x in range(0, len(jpl.keys())):
-        print('for loop')
         a.append((str(x), 'i'))
     temp_comptype = numpy.dtype(a)
     for key in jpl.keys():
@@ -367,10 +311,11 @@ def alert(data, dset):
                     obs_resource = key
                     if dset.attrs.__contains__(key):
                         if (float(data[key]) > sensor['max_limit']) | (float(data[key]) < sensor['min_limit']):
+                            print('Alert activated!')
                             if status == 'main':
                                 ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
                                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                                ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+                                ssh.connect(switch_IP, username='group94', password = 'upoe94')
                                 stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe.tcl")
                                 print("Second module enabled!")
                                 ssh.close() 
@@ -379,93 +324,22 @@ def alert(data, dset):
                                 if add_num == 1:
                                     ip = config['server']['additional modules'][0]['ip']
                                     terminal = subprocess.Popen(['gnome-terminal', '-x', 'python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
-                              
                                 else:
                                     for y in range(0, add_num-1):
                                         ip = config['server']['additional modules'][y]['ip']
                                         terminal = subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
-                            else:
-                                print('Alert activated!')
+                            
+                            
                             return False
     return True
-
-def plot_octave(jpayload):
-    # TODO: plotting function should be more dynamic, to match the configurability of the rest of the program
-    """
-    Function to direct resource data to Octave program to plot
-
-    Example:
-    octave.database_init('data.txt')
-                                    x  y  z  temp   humid   motion  joystickX,Y  year  mon day hh  mm  ss
-    octave.update_plot('data.txt', [3, 3, 3, NaN,   NaN,    NaN,    Nan,    NaN, 1111, 11, 11, 11, 11, 11])
-    octave.save_database('data.txt')
-
-    :param dict jpayload: resource object in dict(JSON) format
-    :raises AttributeError: failed to parse jpayload for resource data
-    :raises RuntimeError: failed to complete octave plotting script
-    """
-    if run_demo is True and jpayload['name'] in resources:
-        #print("payload is {}".format(jpayload))
-        time = []
-        data = []
-        plot_i = -1
-        print(jpayload['name'])
-        try:
-            # TODO: data format for plotting should be more dynamic
-            jvalue = json.loads(jpayload['data'])
-            #print("{}".format(jvalue))
-            if jpayload['name'] == 'JoyX':
-                data += [float('NaN'), float('NaN'), float('NaN'),
-                         float('NaN'), float('NaN'), float('NaN'),
-                         float(jvalue['leftright']), float(jvalue['updown'])]
-                plot_i = 1;
-            elif jpayload['name'] == 'temperature':
-                data += [float('NaN'), float('NaN'), float('NaN'),
-                         float(jvalue['temperature']),
-                         float('NaN'), float('NaN'), float('NaN'), float('NaN')]
-                plot_i = 2;
-            elif jpayload['name'] == 'humidity':
-                data += [float('NaN'), float('NaN'), float('NaN'), float('NaN'),
-                         float(jvalue['humidity']),
-                         float('NaN'), float('NaN'), float('NaN')]
-                plot_i = 3;
-            else:
-                print("Unknown data. Skip plotting...\n")
-                return
-        except Exception as e:
-            raise AttributeError("Failed to parse data for demo: {}".format(e))
-
-        # Parse payload data
-        import re
-        time_str = re.split('[- :]', jpayload['date time'])
-        try:
-            for i in range(5):
-                time += [int(time_str[i])]
-            time += [float(time_str[5])]
-        except Exception as e:
-            time = [0, 0, 0, 0, 0, 0.0]
-            print("Failed to parse time: {}, using:".format(e, time))
-        data += time
-
-        print("data to plot: {}".format(data))
-
-        try:
-            octave.demo_update(data_file, data, plot_i)
-        except Exception as e:
-            # Do not want to disable plotting here since it may be a one-time failure
-            #   on plotting script
-            raise RuntimeError("Failed to plot: {}".format(e));
-
 
 def incoming_data(response, url):
     """
     Function used to deal with response
 
-    :var bool run_demo: (global) whether to run Octave demonstration
     :param response: response from CoAP server
     :param response: aiocoap.message.Message
     """
-    global run_demo
     global jpayload
     jpayload = 0
     payload = response.payload.decode(UTF8)
@@ -479,17 +353,13 @@ def incoming_data(response, url):
             if grp.__contains__(url):
                 dset = grp.__getitem__(url)
                 store_data(dset, jpayload) 
-                plot_octave(jpayload)
+
             else:
                 insert_dataset(grp, url, create_comptype(jpayload))
-                plot_octave(jpayload)
                 print("All data will be stored in the HDF5 file")
 
         except Exception as e:
             print("Failed to store in a dataset {}/ {}".format(url, e))
-            #print("{}".format(e))
-            #print("Disabling Octave script...")
-            run_demo = False
        
 def end_observation(loop):
     """
@@ -663,16 +533,15 @@ class Commands():
 
         Example: ``>>>exit``
         """
-        print("Goodbye!")
-        print("Exiting...")
         global power
         global h5_file
         global status
+        global switch_IP
 
         if power != 0:
             ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+            ssh.connect(switch_IP, username='group94', password = 'upoe94')
             stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
             print("Second module disabled!")
             ssh.close() 
@@ -693,8 +562,9 @@ class Commands():
                         add_file = h5py.File("{}.hdf5".format(ip), "a")
                         subprocess.call(['h5merge','-i','{}'.format(add_file.filename), '-o', '{}'.format(h5_file.filename)])
                         os.remove("{}.hdf5".format(ip))
-           
         h5_file.close()
+        print("Goodbye!")
+        print("Exiting...")
         sys.exit(0)
 
     @staticmethod
@@ -848,12 +718,10 @@ class Commands():
                             for signame in ('SIGINT', 'SIGTERM'):
                                 loop.add_signal_handler(getattr(signal, signame),
                                                         functools.partial(end_observation, loop))
-
                             print("Observation running forever...")
                             print("Press Ctrl + c to end observation")
                             start = datetime.datetime.now()
                             loop.run_until_complete(observe_impl(url))
-                           
                         finally:
                             # In case of exceptions, must terminate observation loop and
                             #   switch back to client event loop
@@ -863,7 +731,6 @@ class Commands():
 
                     else:   # Resource is not configured to observable
                         yield from get_impl(url)
-                       
                         print("Warning: resource is not observable")
 
                 else:
@@ -886,14 +753,13 @@ def client_console():
     connecting, accept commands and resource requests from command
     line, then call corresponded CoAP request implementation
 
-    :var bool run_demo: (global) whether to run Octave demonstration
     """
-    global run_demo
     global grp
     global graph
     global obs_resource
     global obs_activated
     global power
+    global switch_IP
 
     # Probe server first
     print("\nConnecting to server {}...".format(server_IP))
@@ -906,16 +772,11 @@ def client_console():
         print("Failed to create HDF5 file{}".format(e))
 
     print("\nProbing available resources...")
-    # Temporarily disable plotting
-    run_demo_cache = run_demo
-    run_demo = False
     for r in resources:
         # Test GET for each known resource
         yield from Commands.do_resource(r, 'GET')
         print("Success! Resource {} is available at path /{}\n".format(r, resources[r]['url']))
     print("Done probing...")
-    # Restore plotting configuration
-    run_demo = run_demo_cache
 
     # Print general info and help menu on console when client starts
     if obs_activated == True:
@@ -927,13 +788,13 @@ def client_console():
     if power != 0:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect('192.168.2.100', username='group94', password = 'upoe94')
+        ssh.connect(switch_IP, username='group94', password = 'upoe94')
         stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
         print("Second module disabled!")
         ssh.close() 
         start = datetime.datetime.now()
+
     # Start acquiring user input
-      
     while True:
         cmdline = input(">>>")
         cmd_parts = cmdline.split()
@@ -977,14 +838,10 @@ def main(argv):
 
     :var str server_IP: (global) server IP address
     :var dict resources: (global) list of available resources on server
-    :var str data_file: (global) file to store data for Octave plotting
-    :var bool run_demo: (global) whether to run Octave demonstration
     :var BaseEventloop client_event_loop: (global) store client main event loop object
     """
     global server_IP
     global resources
-    global data_file
-    global run_demo
     global client_event_loop
     global not_alert
     global plotting
@@ -995,6 +852,7 @@ def main(argv):
     global obs_activated
     global timer
     global status
+    global switch_IP
     
     import argparse
    
@@ -1021,7 +879,6 @@ def main(argv):
         time.sleep(45)
 
     try:
-        begin = datetime.datetime.now()
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(server_IP, username='pi', password = 'raspberry')
@@ -1029,16 +886,14 @@ def main(argv):
         sftp.get('POEModule-master/POEModule-master/config.json', 'config {}.json'.format(server_IP)) 
         sftp.close()
         ssh.close()
-        print(datetime.datetime.now())
 
         with open('config {}.json'.format(server_IP)) as config_file:
             data = json.load(config_file)
             server_IP = data['server']['IP']
-           # data_file = data['client']['datafile']
-            #demo_config = data['client']['demo']
             status = data['server']['status']
             timer = data['server']['visualization time']
-            print(timer)
+            switch_IP = data['server']['switch IP']
+            print(switch_IP)
             # re-format each sensor entry for client to use
             for r in data['sensors']:
                 resources[r['name']] = {i: r[i] for i in r if i != 'name'}
@@ -1059,23 +914,6 @@ def main(argv):
         print("An error ocurred opening or creating the HDF5 file")
   
     #print("{}".format(resources))
-
-    if run_demo is True and demo_config is True:
-        # Setup octave for data visualization and storage
-        #print("Initializing Octave database and visualizer...")
-        octave.addpath('./')
-        try:
-            octave.demo_init(data_file)
-            # Wait for Octave initialization to complete
-            time.sleep(0.5)
-        except Exception as e:
-         #   print("Failed to initialize demo script: {}".format(e))
-        #    print("Disabling Octave script...")
-            run_demo = False
-    else:
-        # Turn off demo if oct2py module not present or config to not demo
-       # print("Disabling Octave script...")
-        run_demo = False
 
     try:
         loop = asyncio.get_event_loop()

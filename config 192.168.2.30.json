@@ -1,5 +1,6 @@
 {
   "server": {
+    "switch IP": "192.168.2.100",
     "IP": "192.168.2.30",
     "visualization time": 30,
     "status": "additional",

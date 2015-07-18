@@ -13,6 +13,7 @@
     Python3.4 is required
 """
 
+
 import json
 import asyncio
 import pexpect
@@ -42,7 +43,7 @@ def main():
     root.add_resource(('.well-known', 'core'), r.CoreResource(root))
 
     # temporarily disabled
-   #root.add_resource(('alert',), r.Alert())
+    # root.add_resource(('alert',), r.Alert())
 
     with open('/home/pi/POEModule-master/POEModule-master/config.json') as data_file:
         server = json.load(data_file)
@@ -53,16 +54,20 @@ def main():
         poe_config.write('ios_config "interface gi {}" "power inline four-pair forced" "shutdown" "no shutdown"\n'.format(mod['port']))
         poe_config.write('exec "show power inline gi {}"\n'.format(mod['port']))       
     poe_config.close()    
-    child = pexpect.spawn('scp %s %s@%s:%s' % ('/home/pi/POEModule-master/POEModule-master/poe_test.tcl', 'group94', '192.168.2.100', 'poe_test.tcl'))
-    i = child.expect(['Password:', r"yes/no"], timeout=30)
-    if i == 0:
-        child.sendline('upoe94')
-    elif i == 1:
-        child.sendline("yes")
-        child.expect("Password:", timeout=30)
-        child.sendline('upoe94')
-    data = child.read()
-    child.close()
+    try:
+        child = pexpect.spawn('scp %s %s@%s:%s' % ('/home/pi/POEModule-master/POEModule-master/poe_test.tcl', 'group94', '192.168.2.100', 'poe_test.tcl'))
+        i = child.expect(['Password:', r"yes/no"], timeout=30)
+        if i == 0:
+            child.sendline('upoe94')
+        elif i == 1:
+            child.sendline("yes")
+            child.expect("Password:", timeout=30)
+            child.sendline('upoe94')
+        data = child.read()
+        child.close()
+    except Exception as e:
+        print("TCL file transference failed")
+
     for sensor in sensor_list:
         # Known sensors that has been pre-defined
         if sensor['name'] == 'hello':
@@ -77,6 +82,8 @@ def main():
             root.add_resource(tuple(sensor['url'].split('/')), r.Humidity())
         elif sensor['name'] == 'joystick':
             root.add_resource(tuple(sensor['url'].split('/')), r.Joystick())
+        elif sensor['name'] == 'Motion':
+            root.add_resource(tuple(sensor['url'].split('/')), r.Motion())
         # For unknown sensors, use template resource
         else:
             root.add_resource(tuple(sensor['url'].split('/')),
@@ -85,7 +92,8 @@ def main():
                                                  sensor['period'],
                                                  sensor['min'],
                                                  sensor['max'],
-                                                 sensor['channel']))
+                                                 sensor['channel']
+                                                 ))
 
         print("{} resource added to path /{}".format(sensor['name'], sensor['url']))
         '''

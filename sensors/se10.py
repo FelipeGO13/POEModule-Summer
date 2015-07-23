@@ -40,7 +40,7 @@ if platform.machine() != 'x86_64':
         SE-10 motion sensor driver class
         """
 
-        def __init__(self, gpio=SE10_PIN , gpioMode=GPIO.BOARD):
+        def __init__(self, gpio=SE10_PIN, gpioMode=GPIO.BOARD):
             """
             Constructor to create an instance of the SE-10 motion sensor interface
 

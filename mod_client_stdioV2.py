@@ -5,6 +5,8 @@
     @author: Ruibing Zhao
     @author: Yaodong Yu
     @author: Felipe Gabriel Osorio
+    @author: Yuan Liu
+    @author: Xinran Ma
 
     This is a command line tool developed as a CoAP client for demonstration of UBC ECE 2014 Capstone Project #94.
     The implementation of this CoAP client is based on aiocoap module
@@ -128,15 +130,16 @@ def store_data(dset, jpl):
     global power
     global status
     global switch_IP
-    
+
     # Indicates when the alert is activated (True = Alert off/ False = Alert on)
     not_alert = True
-
+    port = '2/5'
     with open('config {}.json'.format(server_IP)) as config_file:
         config = json.load(config_file)
         length = len(config['sensors'])
-        time = config['server']['visualization time']  
-        print (time)  
+        time = config['server']['visualization time']
+        if status == main:  
+            port = config['server']['additional modules'][0]['port']
         for x in range(0, length-1):
             if jpl['name'] == config['sensors'][x]['name']:
                 sensor = config['sensors'][x]
@@ -177,7 +180,7 @@ def store_data(dset, jpl):
                     ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
                     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                     ssh.connect(switch_IP, username='group94', password = 'upoe94')
-                    stdin, stdout, stderr = ssh.exec_command("show power inline gi 2/5")
+                    stdin, stdout, stderr = ssh.exec_command("show power inline gi {}".format(port))
                     power = float(stdout.read()[310: 320])
                     ssh.close() 
                 else:
@@ -215,7 +218,7 @@ def store_data(dset, jpl):
 
     now = datetime.datetime.now()
     diff = now-start
-
+    print(float(diff.total_seconds()))
     #Disable the additional model after 30 seconds (Need to include configurable time)
     if float(diff.total_seconds()) > timer:
           if status in 'additional':
@@ -323,11 +326,11 @@ def alert(data, dset):
                                 add_num = len(config['server']['additional modules'])
                                 if add_num == 1:
                                     ip = config['server']['additional modules'][0]['ip']
-                                    terminal = subprocess.Popen(['gnome-terminal', '-x', 'python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
+                                    terminal = subprocess.Popen(['gnome-terminal', '-x', 'python3', 'mod_client_stdioV2.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
                                 else:
                                     for y in range(0, add_num-1):
                                         ip = config['server']['additional modules'][y]['ip']
-                                        terminal = subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdio.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
+                                        terminal = subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdioV2.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
                             
                             
                             return False
@@ -341,6 +344,8 @@ def incoming_data(response, url):
     :param response: aiocoap.message.Message
     """
     global jpayload
+    global probing
+
     jpayload = 0
     payload = response.payload.decode(UTF8)
     if response.opt.content_format is not JSON_FORMAT_CODE:
@@ -350,10 +355,11 @@ def incoming_data(response, url):
         print("Result (JSON):\n{}: {}".format(response.code, jpayload))
 
         try:
-            if grp.__contains__(url):
+            if (grp.__contains__(url)) & (probing == False):
                 dset = grp.__getitem__(url)
                 store_data(dset, jpayload) 
-
+            elif (grp.__contains__(url)) & (probing == True):
+                print("Resource available and ready to provide data")
             else:
                 insert_dataset(grp, url, create_comptype(jpayload))
                 print("All data will be stored in the HDF5 file")
@@ -760,6 +766,7 @@ def client_console():
     global obs_activated
     global power
     global switch_IP
+    global probing
 
     # Probe server first
     print("\nConnecting to server {}...".format(server_IP))
@@ -772,12 +779,13 @@ def client_console():
         print("Failed to create HDF5 file{}".format(e))
 
     print("\nProbing available resources...")
+    probing = True
     for r in resources:
         # Test GET for each known resource
         yield from Commands.do_resource(r, 'GET')
         print("Success! Resource {} is available at path /{}\n".format(r, resources[r]['url']))
     print("Done probing...")
-
+    probing = False
     # Print general info and help menu on console when client starts
     if obs_activated == True:
          yield from Commands.do_resource(obs_resource, 'GET', '-o')
@@ -785,14 +793,6 @@ def client_console():
     print("Initializing command prompt...\n")
     Commands.do_help()
     graph = False
-    if power != 0:
-        ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(switch_IP, username='group94', password = 'upoe94')
-        stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
-        print("Second module disabled!")
-        ssh.close() 
-        start = datetime.datetime.now()
 
     # Start acquiring user input
     while True:
@@ -839,6 +839,8 @@ def main(argv):
     :var str server_IP: (global) server IP address
     :var dict resources: (global) list of available resources on server
     :var BaseEventloop client_event_loop: (global) store client main event loop object
+    :var boolean not_alert: (global) store alert status
+    :var Matplotlib.pylab plotting: (global) initialize the plotting variable indicating its shape  
     """
     global server_IP
     global resources
@@ -855,8 +857,6 @@ def main(argv):
     global switch_IP
     
     import argparse
-   
-# Given the server's IP as parameter, the username and password, acquire the configuration json file using sftp and store it into the client folder until the next program execution (It's a little bit slow, maybe it will be necessary to optimize this feature
 
     not_alert = True
     plotting, = plt.plot([], [])
@@ -867,7 +867,7 @@ def main(argv):
     p.add_argument('-o', '--observe', help="Observate a required resource")
 
     options = p.parse_args(argv)
-
+   
     if options.server_ip:
         server_IP = options.server_ip
     if options.observe:
@@ -876,7 +876,7 @@ def main(argv):
     else:
         obs_activated = False 
     if obs_activated == True:
-        time.sleep(45)
+        time.sleep(40)
 
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
@@ -886,7 +886,7 @@ def main(argv):
         sftp.get('POEModule-master/POEModule-master/config.json', 'config {}.json'.format(server_IP)) 
         sftp.close()
         ssh.close()
-
+        
         with open('config {}.json'.format(server_IP)) as config_file:
             data = json.load(config_file)
             server_IP = data['server']['IP']

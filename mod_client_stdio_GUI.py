@@ -59,29 +59,40 @@ client_event_loop = asyncio.get_event_loop()
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
     
-class App(threading.Thread, Frame):
+class Gui(threading.Thread, Frame):
   
     def __init__(self):
-        
-        threading.Thread.__init__(self)
        
+        threading.Thread.__init__(self)
+        self._running = True
         self.start()
 
-    def callback(self):
-        self.root.quit()
+    def stop(self):
+       os._exit(1)
 
     def run(self):
+        global rsc
+        global rscAvl
+        global display
+       
         self.root = Tk()
         frame = Frame(self.root)
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(3, pad=5)
         frame.rowconfigure(6, weight = 1) 
         frame.rowconfigure(5, pad=5)         
-       
-        #frame.box_value = StringVar()
+        
+        rscLbl= Label (frame, text='Resources available: ')
+        rscLbl.grid(row=0, column=0, padx=5, pady=5)
+        
+        rsc = ('')
+           
+        rscAvl = Combobox(frame, state='readonly')
+        rscAvl.grid(row=0, column=1, pady=5, stick=W)
 
         getBtn = Button(frame, text="Get")
         getBtn.grid(row=1, column=3, pady=5)
+
         putBtn = Button(frame, text="Put")
         putBtn.grid(row=2, column=3, pady=5)
 
@@ -97,30 +108,25 @@ class App(threading.Thread, Frame):
         display = Text(frame)
         display.grid(row=1, column=0, columnspan=2, rowspan=6, padx=5, sticky=E+W+S+N)
         
-        helpBtn = Button(frame, text='Help')
+        helpBtn = Button(frame, text='Help', command = Commands.do_help)
         helpBtn.grid(row=7, column=0, padx = 5, pady=5, sticky=W)
         
-        closeBtn = Button(frame, text='Close')
+        closeBtn = Button(frame, text='Close', command = Commands.do_exit)
         closeBtn.grid(row=7, column=3, padx = 5, pady=5)
-        
-        rscLbl= Label (frame, text='Resources available: ')
-        rscLbl.grid(row=0, column=0, padx=5, pady=5)
-       
-        rscAvl = Combobox(frame, state='readonly')
-        rscAvl.grid(row=0, column=1, pady=5, stick=W)
 
         frame.pack()
         self.root.mainloop()
 
-    #def update_resources(self, resources):
-        
+def insertText(text):
+    global display
+    display.configure(state="normal")
+    display.insert(INSERT, '{}... \n'.format(text))
+    display.configure(state="disabled")
 
-    def insertText(self, text):
-       
-        frame.display.configure(state="normal")
-        frame.display.insert(INSERT, '{}... \n'.format(text))
-        frame.display.configure(state="disabled")
-
+def update_resources(resources):
+    global rscAvl
+    rscAvl.configure(values = resources)
+                   
 def create_grouph5():
     """
     Create an HDF5 group with the ip of the controller module connected to the client
@@ -415,10 +421,13 @@ def incoming_data(response, url):
     payload = response.payload.decode(UTF8)
     if response.opt.content_format is not JSON_FORMAT_CODE:
         print("Result:\n{}: {}".format(response.code, payload))
+        insertText("Result:\n{}: {}".format(response.code, payload))
     else:
         jpayload = json.loads(payload)
         print("Result (JSON):\n{}: {}".format(response.code, jpayload))
-
+        if probing == False:
+            insertText("Result (JSON):\n{}: {}".format(response.code, jpayload))    
+       
         try:
             if (grp.__contains__(url)) & (probing == False):
                 dset = grp.__getitem__(url)
@@ -564,7 +573,7 @@ class Commands():
         :param str command: of which command help is needed
         """
         global resource_list
-        
+
         if command:
             print(getattr(Commands, 'do_'+command).__doc__)
         else:
@@ -612,7 +621,8 @@ class Commands():
         global h5_file
         global status
         global switch_IP
-
+        global gui
+        """
         if power != 0:
             ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -620,7 +630,7 @@ class Commands():
             stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
             print("Second module disabled!")
             ssh.close() 
-
+        """
         if status == 'main':
             h5_file.flush()
             with open('config {}.json'.format(server_IP)) as config_file:
@@ -640,6 +650,7 @@ class Commands():
         h5_file.close()
         print("Goodbye!")
         print("Exiting...")
+        gui.stop()
         sys.exit(0)
 
     @staticmethod
@@ -752,6 +763,7 @@ class Commands():
         not_alert = True
         global start
         start = 0
+      
         """
         General implementation of resource command for GET/PUT
 
@@ -772,13 +784,13 @@ class Commands():
         :raises ValueError: invalid request code (not GET or PUT)
         :raises RuntimeError: CoAP request failed
         """
+
         payload = " ".join(args)
         try:
             resource = resources[name]
             url = resource['url']
         except AttributeError and IndexError as e:
             raise AttributeError("Resource name or url not found: {}".format(e))
-
         #print("do_resource: payload={}".format(payload))
         try:
             if code == 'GET':
@@ -837,26 +849,30 @@ def client_console():
     global switch_IP
     global probing
     global resource_list
-     
+    global app
+    global display_txt
+ 
     resource_list = []
     # Probe server first
     print("\nConnecting to server {}...".format(server_IP))
+    insertText("\nConnecting to server {}...".format(server_IP))
     # Initialization will be blocked here if server not available
     yield from Commands.do_probe()
-    app = App()
+   
     try:
         grp = create_grouph5()
     except Exception as e:
         print("Failed to create HDF5 file{}".format(e))
 
     print("\nProbing available resources...")
-    #app.insertText("Probing available resources...")
+    insertText("Probing available resources...")
     probing = True
     for r in resources:
         # Test GET for each known resource
         yield from Commands.do_resource(r, 'GET')
         print("Success! Resource {} is available at path /{}\n".format(r, resources[r]['url']))
     print("Done probing...")
+    insertText("Done probing...")
     probing = False
     # Print general info and help menu on console when client starts
     if obs_activated == True:
@@ -865,8 +881,7 @@ def client_console():
     print("Initializing command prompt...\n")
     Commands.do_help()
     graph = False
-    print(resource_list)
-
+    update_resources(resource_list)
     # Start acquiring user input
     while True:
         cmdline = input(">>>")
@@ -929,7 +944,8 @@ def main(argv):
     global status
     global switch_IP
     global resource_list
-
+    global display_txt
+    global gui
     import argparse
 
     not_alert = True
@@ -952,6 +968,7 @@ def main(argv):
     if obs_activated == True:
         time.sleep(40)
 
+    gui = Gui()
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -984,8 +1001,9 @@ def main(argv):
     try:
         h5_file = h5py.File("{}.hdf5".format(server_IP), "a")
         print("HDF5 File succefully created or accessed")
-    except:
-        print("An error ocurred opening or creating the HDF5 file")
+        insertText("HDF5 File succefully created or accessed")
+    except Exception as e:
+        print("An error ocurred opening or creating the HDF5 file {}".format(e))
   
     #print("{}".format(resources))
     try:

@@ -36,6 +36,7 @@ import matplotlib.pylab as plt
 
 from tkinter import *
 from tkinter.ttk import *
+from tkinter_async import *
 from aiocoap import *
 from defs import *
 																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																													
@@ -59,38 +60,44 @@ client_event_loop = asyncio.get_event_loop()
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
     
-class Gui(threading.Thread, Frame):
+def gui_builder(root, get_cb, obs_cb, respawn=Respawn.CONCURRENT):
   
-    def __init__(self):
-       
-        threading.Thread.__init__(self)
-        self._running = True
-        self.start()
-
-    def stop(self):
-       os._exit(1)
-
-    def run(self):
         global rsc
         global rscAvl
         global display
        
-        self.root = Tk()
-        frame = Frame(self.root)
+        frame = Frame(root)
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(3, pad=5)
         frame.rowconfigure(6, weight = 1) 
-        frame.rowconfigure(5, pad=5)         
+        frame.rowconfigure(5, pad=5)       
+       
+        @asyncio.coroutine
+        def submit_get():
+            yield from get_cb()
         
+        @asyncio.coroutine
+        def submit_put():
+            yield from put_cb()
+
+        @asyncio.coroutine
+        def submit_post():
+            yield from post_cb()
+
+        @asyncio.coroutine
+        def submit_obs():
+            yield from obs_cb()
+
         rscLbl= Label (frame, text='Resources available: ')
         rscLbl.grid(row=0, column=0, padx=5, pady=5)
         
         rsc = ('')
-           
+                
         rscAvl = Combobox(frame, state='readonly')
-        rscAvl.grid(row=0, column=1, pady=5, stick=W)
+        rscAvl.grid(row=0, column=1, pady=5, stick='w')
 
-        getBtn = Button(frame, text="Get")
+        update_resources(resource_list)
+        getBtn = Button(frame, text="Get", command = spawn(submit_get, respawn=respawn))
         getBtn.grid(row=1, column=3, pady=5)
 
         putBtn = Button(frame, text="Put")
@@ -99,13 +106,13 @@ class Gui(threading.Thread, Frame):
         postBtn = Button(frame, text="Post")
         postBtn.grid(row=3, column=3, pady=5)
 
-        obsBtn = Button(frame, text="Observe")
+        obsBtn = Button(frame, text="Observe", command = spawn(submit_obs, respawn=respawn))
         obsBtn.grid(row=4, column=3, pady=5)
 
         cancelBtn = Button(frame, text="Cancel")
         cancelBtn.grid(row=5, column=3, pady=5)
          
-        display = Text(frame)
+        display = Text(frame, state="disabled")
         display.grid(row=1, column=0, columnspan=2, rowspan=6, padx=5, sticky=E+W+S+N)
         
         helpBtn = Button(frame, text='Help', command = Commands.do_help)
@@ -113,9 +120,8 @@ class Gui(threading.Thread, Frame):
         
         closeBtn = Button(frame, text='Close', command = Commands.do_exit)
         closeBtn.grid(row=7, column=3, padx = 5, pady=5)
-
-        frame.pack()
-        self.root.mainloop()
+         
+        return frame
 
 def insertText(text):
     global display
@@ -126,6 +132,80 @@ def insertText(text):
 def update_resources(resources):
     global rscAvl
     rscAvl.configure(values = resources)
+
+@asyncio.coroutine
+def tk_app():
+    root = Tk()
+    global rscAvl
+
+    @asyncio.coroutine
+    def set_get():
+        print(rscAvl.get())
+        yield from Commands.do_resource(rscAvl.get())
+    """
+    @asyncio.coroutine
+    def set_put():
+        print(rscAvl.get())
+        yield from Commands.do_add()
+
+    @asyncio.coroutine
+    def set_post():
+        print(rscAvl.get())
+        yield from Commands.do_resource(rscAvl.get(), code = '')
+    """
+
+    @asyncio.coroutine
+    def set_obs():
+        print(rscAvl.get())
+        yield from Commands.do_resource(rscAvl.get(), 'GET', '-o')
+    
+    gui_builder(root, set_get, set_obs, Respawn.CONCURRENT).pack()
+
+    yield from async_mainloop(root)
+
+
+@asyncio.coroutine
+def run():
+    global grp
+    global graph
+    global obs_resource
+    global obs_activated
+    global power
+    global switch_IP
+    global probing
+    global resource_list
+    global app
+
+    resource_list = []
+    # Probe server first
+    print("\nConnecting to server {}...".format(server_IP))
+    #insertText("\nConnecting to server {}...".format(server_IP))
+    # Initialization will be blocked here if server not available
+    yield from Commands.do_probe()
+   
+    try:
+        grp = create_grouph5()
+    except Exception as e:
+        print("Failed to create HDF5 file{}".format(e))
+
+    print("\nProbing available resources...")
+    #insertText("Probing available resources...")
+    probing = True
+    for r in resources:
+        # Test GET for each known resource
+        yield from Commands.do_resource(r, 'GET')
+        print("Success! Resource {} is available at path /{}\n".format(r, resources[r]['url']))
+    print("Done probing...")
+    #insertText("Done probing...")
+    probing = False
+    # Print general info and help menu on console when client starts
+    if obs_activated == True:
+         yield from Commands.do_resource(obs_resource, 'GET', '-o')
+         
+    print("Initializing command prompt...\n")
+    Commands.do_help()
+    graph = False
+    yield from tk_app()
                    
 def create_grouph5():
     """
@@ -421,7 +501,7 @@ def incoming_data(response, url):
     payload = response.payload.decode(UTF8)
     if response.opt.content_format is not JSON_FORMAT_CODE:
         print("Result:\n{}: {}".format(response.code, payload))
-        insertText("Result:\n{}: {}".format(response.code, payload))
+        #insertText("Result:\n{}: {}".format(response.code, payload))
     else:
         jpayload = json.loads(payload)
         print("Result (JSON):\n{}: {}".format(response.code, jpayload))
@@ -650,7 +730,6 @@ class Commands():
         h5_file.close()
         print("Goodbye!")
         print("Exiting...")
-        gui.stop()
         sys.exit(0)
 
     @staticmethod
@@ -830,7 +909,7 @@ class Commands():
                 raise ValueError("invalid request code")
         except Exception as e:
             raise RuntimeError("Failed to complete CoAP request: {}".format(e))
-
+  
 
 def client_console():
     """
@@ -850,12 +929,11 @@ def client_console():
     global probing
     global resource_list
     global app
-    global display_txt
- 
+
     resource_list = []
     # Probe server first
     print("\nConnecting to server {}...".format(server_IP))
-    insertText("\nConnecting to server {}...".format(server_IP))
+    #insertText("\nConnecting to server {}...".format(server_IP))
     # Initialization will be blocked here if server not available
     yield from Commands.do_probe()
    
@@ -865,14 +943,14 @@ def client_console():
         print("Failed to create HDF5 file{}".format(e))
 
     print("\nProbing available resources...")
-    insertText("Probing available resources...")
+    #insertText("Probing available resources...")
     probing = True
     for r in resources:
         # Test GET for each known resource
         yield from Commands.do_resource(r, 'GET')
         print("Success! Resource {} is available at path /{}\n".format(r, resources[r]['url']))
     print("Done probing...")
-    insertText("Done probing...")
+    #insertText("Done probing...")
     probing = False
     # Print general info and help menu on console when client starts
     if obs_activated == True:
@@ -881,7 +959,8 @@ def client_console():
     print("Initializing command prompt...\n")
     Commands.do_help()
     graph = False
-    update_resources(resource_list)
+    #update_resources(resource_list)
+
     # Start acquiring user input
     while True:
         cmdline = input(">>>")
@@ -944,8 +1023,8 @@ def main(argv):
     global status
     global switch_IP
     global resource_list
-    global display_txt
     global gui
+
     import argparse
 
     not_alert = True
@@ -968,7 +1047,6 @@ def main(argv):
     if obs_activated == True:
         time.sleep(40)
 
-    gui = Gui()
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -996,12 +1074,12 @@ def main(argv):
         print("Failed to parse config file from server: {}".format(e))
         print("Exiting client!!!")
         return
-
+   
     # Creating HDF5 file or opening an existing one
     try:
         h5_file = h5py.File("{}.hdf5".format(server_IP), "a")
         print("HDF5 File succefully created or accessed")
-        insertText("HDF5 File succefully created or accessed")
+        #insertText("HDF5 File succefully created or accessed")
     except Exception as e:
         print("An error ocurred opening or creating the HDF5 file {}".format(e))
   
@@ -1011,8 +1089,9 @@ def main(argv):
         # Keep a global record of the event loop for client
         client_event_loop = loop
         # Start client console
-        loop.run_until_complete(client_console())
-
+        
+        loop.run_until_complete(run())
+       
     except Exception as e:
         print("{}".format(e))
 

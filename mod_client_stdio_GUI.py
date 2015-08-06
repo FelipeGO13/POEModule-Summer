@@ -31,7 +31,7 @@ import datetime
 import paramiko
 import os
 import subprocess
-import threading
+import inspect
 import matplotlib.pylab as plt
 
 from tkinter import *
@@ -60,112 +60,201 @@ client_event_loop = asyncio.get_event_loop()
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
     
-def gui_builder(root, get_cb, obs_cb, respawn=Respawn.CONCURRENT):
+def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, respawn=Respawn.CONCURRENT):
   
-        global rsc
-        global rscAvl
-        global display
+    global rsc
+    global rscAvl
+    global display
        
-        frame = Frame(root)
-        frame.columnconfigure(1, weight=1)
-        frame.columnconfigure(3, pad=5)
-        frame.rowconfigure(6, weight = 1) 
-        frame.rowconfigure(5, pad=5)       
+    frame = Frame(root)
+    frame.columnconfigure(1, weight=1)
+    frame.columnconfigure(3, pad=5)
+    frame.rowconfigure(6, weight = 1) 
+    frame.rowconfigure(5, pad=5)       
        
-        @asyncio.coroutine
-        def submit_get():
-            yield from get_cb()
+    @asyncio.coroutine
+    def submit_get():
+        yield from get_cb()
         
-        @asyncio.coroutine
-        def submit_put():
-            yield from put_cb()
+    @asyncio.coroutine
+    def submit_put():
+        yield from put_cb()
 
-        @asyncio.coroutine
-        def submit_post():
-            yield from post_cb()
+    
+    @asyncio.coroutine
+    def submit_post():
+        yield from post_cb()
+  
+    @asyncio.coroutine
+    def submit_obs():
+        yield from obs_cb()
 
-        @asyncio.coroutine
-        def submit_obs():
-            yield from obs_cb()
-
-        rscLbl= Label (frame, text='Resources available: ')
-        rscLbl.grid(row=0, column=0, padx=5, pady=5)
+    rscLbl= Label (frame, text='Resources available: ')
+    rscLbl.grid(row=0, column=0, padx=5, pady=5)
         
-        rsc = ('')
+    rsc = ('')
                 
-        rscAvl = Combobox(frame, state='readonly')
-        rscAvl.grid(row=0, column=1, pady=5, stick='w')
+    rscAvl = Combobox(frame, state='readonly')
+    rscAvl.grid(row=0, column=1, pady=5, stick='w')
 
-        update_resources(resource_list)
-        getBtn = Button(frame, text="Get", command = spawn(submit_get, respawn=respawn))
-        getBtn.grid(row=1, column=3, pady=5)
+    getBtn = Button(frame, text="Get", command = spawn(submit_get, respawn = respawn))
+    getBtn.grid(row=1, column=3, pady=5)
 
-        putBtn = Button(frame, text="Put")
-        putBtn.grid(row=2, column=3, pady=5)
+    putBtn = Button(frame, text="Put", command = spawn(submit_put, respawn = respawn))
+    putBtn.grid(row=2, column=3, pady=5)
 
-        postBtn = Button(frame, text="Post")
-        postBtn.grid(row=3, column=3, pady=5)
+    postBtn = Button(frame, text="Post", command = spawn(submit_post, respawn = respawn))
+    postBtn.grid(row=3, column=3, pady=5)
 
-        obsBtn = Button(frame, text="Observe", command = spawn(submit_obs, respawn=respawn))
-        obsBtn.grid(row=4, column=3, pady=5)
+    obsBtn = Button(frame, text="Observe", command = spawn(submit_obs, respawn = respawn))
+    obsBtn.grid(row=4, column=3, pady=5)
 
-        cancelBtn = Button(frame, text="Cancel")
-        cancelBtn.grid(row=5, column=3, pady=5)
+    cancelBtn = Button(frame, text="Cancel")
+    cancelBtn.grid(row=5, column=3, pady=5)
          
-        display = Text(frame, state="disabled")
-        display.grid(row=1, column=0, columnspan=2, rowspan=6, padx=5, sticky=E+W+S+N)
+    display = Text(frame, state="disabled")
+    display.grid(row=1, column=0, columnspan=2, rowspan=6, padx=5, sticky=E+W+S+N)
         
-        helpBtn = Button(frame, text='Help', command = Commands.do_help)
-        helpBtn.grid(row=7, column=0, padx = 5, pady=5, sticky=W)
+    helpBtn = Button(frame, text='Help', command = Commands.do_help)
+    helpBtn.grid(row=7, column=0, padx = 5, pady=5, sticky=W)
         
-        closeBtn = Button(frame, text='Close', command = Commands.do_exit)
-        closeBtn.grid(row=7, column=3, padx = 5, pady=5)
-         
-        return frame
+    closeBtn = Button(frame, text='Close', command = Commands.do_exit)
+    closeBtn.grid(row=7, column=3, padx = 5, pady=5)
+
+    update_resources(resource_list)
+    insertText("Welcome to the Sensor network manager\n")         
+
+    return frame
 
 def insertText(text):
+
     global display
+
     display.configure(state="normal")
     display.insert(INSERT, '{}... \n'.format(text))
     display.configure(state="disabled")
 
 def update_resources(resources):
+
     global rscAvl
+
     rscAvl.configure(values = resources)
 
 @asyncio.coroutine
 def tk_app():
-    root = Tk()
+  
     global rscAvl
+
+    root = Tk()
 
     @asyncio.coroutine
     def set_get():
         print(rscAvl.get())
         yield from Commands.do_resource(rscAvl.get())
-    """
+
     @asyncio.coroutine
     def set_put():
-        print(rscAvl.get())
-        yield from Commands.do_add()
+        top = Toplevel()
+
+        lab = Label(top, text='Define the parameter that you want to change')
+        lab.pack()
+
+        msg = Entry(top)
+        msg.pack()
+
+        confirmBtn = Button(top, text = 'Confirm', command = spawn(lambda: comb_func(top, msg.get())))
+        confirmBtn.pack()
 
     @asyncio.coroutine
     def set_post():
-        print(rscAvl.get())
-        yield from Commands.do_resource(rscAvl.get(), code = '')
-    """
+        obs = IntVar()
+
+        top = Toplevel()
+        
+        lab = Label(top, text = 'New resource addition').grid(row = 0, column = 0, columnspan = 1)
+
+        labName =  Label(top, text = 'Resource name').grid(row = 1, column = 0, padx = 2, pady = 2)
+        name = Entry(top)
+        name.grid(row = 1, column = 1, padx = 2, pady = 2)
+
+        labUrl = Label(top, text = 'Resource url').grid(row = 2, column = 0, padx = 2, pady = 2)
+        url = Entry(top)
+        url.grid(row = 2, column = 1, padx = 2, pady = 2)
+
+        observable = Checkbutton(top, text = 'Observable', variable = obs,  onvalue = 1, offvalue = 0)
+        observable.grid(row = 3, pady = 2, padx = 2)
+
+        labFreq = Label(top, text = "Observe Frequency").grid(row =4, column = 0, padx = 2, pady = 2)
+        freq = Entry(top)
+        freq.grid(row = 4, column = 1, pady = 2, padx = 2)
+
+        labMax = Label(top, text = "Maximum limit").grid(row = 5, column = 0, pady = 2, padx = 2)
+        maxEntry = Entry(top)
+        maxEntry.grid(row = 5, column = 1, pady = 2, padx = 2)
+
+        labMin = Label(top, text = "Minimum limit").grid(row = 6, column = 0, pady = 2, padx = 2)
+        minEntry = Entry(top)
+        minEntry.grid(row = 6, column = 1, pady = 2, padx = 2)
+
+        labAdc = Label(top, text = "ADC channel").grid(row = 7, column =0, pady = 2, padx = 2)
+        adc  = Entry(top)
+        adc.grid(row = 7, column = 1, pady = 2, padx = 2)
+
+        confirmBtn = Button(top, text = 'Confirm', command = spawn(lambda: do_post(name.get(), adc.get(), url.get(), obs.get(), freq.get(), maxEntry.get(), minEntry.get()))).grid(row = 8, column = 0)
+
+        cancelBtn = Button(top, text = 'Cancel').grid(row = 8, column = 1)
+
+    @asyncio.coroutine
+    def do_post(name, adc, url, obs, freq, maxLim, minLim):
+        post_attr = ''
+        frame = inspect.currentframe()
+        args, _, _, values = inspect.getargvalues(frame)
+        for i in args:
+            print("{} = {}".format(i, values[i]))
+            if (i == 'adc') & (values[i] != ''):
+                post_attr += "-c {} ".format(int(values[i]))
+            elif (i == 'url') & (values[i] != ''):
+               post_attr += "-u {} ".format(values[i])
+            elif (i == 'obs') & (values[i] == 1):
+               post_attr += "-o "
+            elif (i == 'freq') & (values[i] != ''):
+                post_attr += "-f{} ".format(values[i])
+            elif (i == 'maxLim') & (values[i] != ''):
+                post_attr += "-m{} ".format(values[i])
+            elif (i == 'minLim') & (values[i] != ''):
+                post_attr += "-l{} ".format(values[i])
+          
+        print(post_attr)
+
+        yield from Commands.do_add(name, '{}'.format(post_attr))
+
+    @asyncio.coroutine
+    def comb_func(top, msg):
+
+        yield from close_popup(top)
+        yield from do_put(msg)
+    
+    @asyncio.coroutine
+    def close_popup(top):
+        top.destroy()
+    
+    @asyncio.coroutine
+    def do_put(msg):
+
+        yield from Commands.do_resource(rscAvl.get(), 'PUT', msg)
 
     @asyncio.coroutine
     def set_obs():
         print(rscAvl.get())
         yield from Commands.do_resource(rscAvl.get(), 'GET', '-o')
     
-    gui_builder(root, set_get, set_obs, Respawn.CONCURRENT).pack()
+    gui_builder(root, set_get, set_obs, set_put, set_post, Respawn.CONCURRENT).pack()
 
     yield from async_mainloop(root)
 
-
 @asyncio.coroutine
 def run():
+
     global grp
     global graph
     global obs_resource
@@ -175,11 +264,14 @@ def run():
     global probing
     global resource_list
     global app
-
+    global display_text
+ 
     resource_list = []
+
+    probing = True
     # Probe server first
     print("\nConnecting to server {}...".format(server_IP))
-    #insertText("\nConnecting to server {}...".format(server_IP))
+
     # Initialization will be blocked here if server not available
     yield from Commands.do_probe()
    
@@ -189,32 +281,37 @@ def run():
         print("Failed to create HDF5 file{}".format(e))
 
     print("\nProbing available resources...")
-    #insertText("Probing available resources...")
-    probing = True
+
     for r in resources:
         # Test GET for each known resource
         yield from Commands.do_resource(r, 'GET')
         print("Success! Resource {} is available at path /{}\n".format(r, resources[r]['url']))
     print("Done probing...")
-    #insertText("Done probing...")
+
     probing = False
     # Print general info and help menu on console when client starts
+
     if obs_activated == True:
          yield from Commands.do_resource(obs_resource, 'GET', '-o')
          
-    print("Initializing command prompt...\n")
+    print("Initializing client GUI...\n")
     Commands.do_help()
     graph = False
+ 
     yield from tk_app()
+    
                    
 def create_grouph5():
+
     """
     Create an HDF5 group with the ip of the controller module connected to the client
     If the module is already recorded in the database, the function just assign it to a HDF5 group 
     variable.
     All the necessary metadata is obtained by the configuration json file provided by the server.
     """
+
     global h5_file
+
     try:
         module = server_IP
         if h5_file.__contains__(module):
@@ -241,12 +338,14 @@ def create_grouph5():
         print("Failed to create file or group! {}".format(e))
 
 def insert_dataset(grp, name, comp_type):
+
     """
     Create an HDF5 dataset with the name of the sensor connected to the contorller module and
     implemented by the configuration json file.
    
     All the necessary metadata is obtained by the configuration file provided by the server.
     """
+
     try:
         dset = grp.create_dataset("{}".format(name), (1, ), comp_type, maxshape=(None,))
         with open('config {}.json'.format(server_IP)) as config_file:
@@ -265,10 +364,12 @@ def insert_dataset(grp, name, comp_type):
         print("Failed to create a dataset! {}".format(e))
 
 def store_data(dset, jpl):
+
     """
     Create a new tuple and store the obtained data from sensors in the datasets, identifying 
     the column by the json file received as response from the server. Also, enables the data     visualization and the smart power managent system.
     """
+
     global not_alert
     global plotting
     global ax
@@ -499,9 +600,10 @@ def incoming_data(response, url):
 
     jpayload = 0
     payload = response.payload.decode(UTF8)
-    if response.opt.content_format is not JSON_FORMAT_CODE:
+    if (response.opt.content_format is not JSON_FORMAT_CODE):
         print("Result:\n{}: {}".format(response.code, payload))
-        #insertText("Result:\n{}: {}".format(response.code, payload))
+        if probing == False:
+            insertText("Result:\n{}: {}".format(response.code, payload))
     else:
         jpayload = json.loads(payload)
         print("Result (JSON):\n{}: {}".format(response.code, jpayload))
@@ -541,7 +643,7 @@ def end_observation(loop):
     print("Switched back to client console...")
 
 @asyncio.coroutine
-def post_impl(jargs):
+def post_impl(jargs, url):
     """
     Implementation of CoAP POST request
 
@@ -793,12 +895,12 @@ class Commands():
         b_range = False
         min = None
         max = None
-
+        print(url)
         if options.url:
             url = options.url
         else:
             print("Warning: use resource name ({}) as url".format(name))
-
+        
         if options.min and options.max:
             try:
                 min = int(options.min)
@@ -831,7 +933,7 @@ class Commands():
         payload['name'] = name
 
         try:
-            yield from post_impl(json.dumps(payload))
+            yield from post_impl(json.dumps(payload), url)
         except Exception as e:
             raise RuntimeError("Failed to complete CoAP request: {}".format(e))
 
@@ -910,16 +1012,15 @@ class Commands():
         except Exception as e:
             raise RuntimeError("Failed to complete CoAP request: {}".format(e))
   
-
+"""
 def client_console():
-    """
+
     Client command line tool
 
     Initialize as CoAP clients and try contacting server. While
     connecting, accept commands and resource requests from command
     line, then call corresponded CoAP request implementation
 
-    """
     global grp
     global graph
     global obs_resource
@@ -996,6 +1097,7 @@ def client_console():
                     yield from method(*args)
             except Exception as e:
                 print("Error: {}".format(e))
+"""
 
 def main(argv):
     """

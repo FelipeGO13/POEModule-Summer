@@ -376,10 +376,12 @@ def end_observation(loop):
     # FIXME: method should actually end observation on server.
     #       Now, it only deals with client side
     global graph
+    global server_IP
     print("Observation ended by user interrupt...")
     # Terminate observation event loop
     loop.close()
     graph = False
+    plt.savefig('{}'.format(server_IP), format='pdf')
     print("Observation loop ended in the client...")
 
     # Restore event loop
@@ -387,7 +389,7 @@ def end_observation(loop):
     print("Switched back to client console...")
 
 @asyncio.coroutine
-def post_impl(jargs):
+def post_impl(jargs, url):
     """
     Implementation of CoAP POST request
 
@@ -634,12 +636,12 @@ class Commands():
         b_range = False
         min = None
         max = None
-
+        print(url)
         if options.url:
             url = options.url
         else:
             print("Warning: use resource name ({}) as url".format(name))
-
+        
         if options.min and options.max:
             try:
                 min = int(options.min)
@@ -663,6 +665,7 @@ class Commands():
                            'channel': channel,
                            'active': active,
                            'frequency': frequency}
+        print(url)
         if b_range is True:
             resources[name]['min'] = min
             resources[name]['max'] = max
@@ -672,7 +675,7 @@ class Commands():
         payload['name'] = name
 
         try:
-            yield from post_impl(json.dumps(payload))
+            yield from post_impl(json.dumps(payload), url)
         except Exception as e:
             raise RuntimeError("Failed to complete CoAP request: {}".format(e))
 
@@ -855,13 +858,15 @@ def main(argv):
     global timer
     global status
     global switch_IP
-    
+    global power
+
     import argparse
 
     not_alert = True
     plotting, = plt.plot([], [])
     graph = False
-        	 
+    power = 0
+ 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('-s', '--server_ip', help="IP of the required module")
     p.add_argument('-o', '--observe', help="Observate a required resource")

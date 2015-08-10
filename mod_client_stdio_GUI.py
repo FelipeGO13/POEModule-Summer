@@ -32,6 +32,7 @@ import paramiko
 import os
 import subprocess
 import inspect
+import threading
 import matplotlib.pylab as plt
 
 from tkinter import *
@@ -59,13 +60,40 @@ client_event_loop = asyncio.get_event_loop()
 # logging configuration
 logging.basicConfig(level=logging.INFO)
 # TODO: Add logging function to replace "print" in the code
+
+class Gui_cancel(Frame):
+
+    def __init__(self, master):
+        global end_obs
+
+        end_obs = False
+        lbl = Label(master, text = "To stop the observation, please press the button below")
+        lbl.grid(row=0, column = 0, pady =5)
+        cancelBtn = Button(master, text="Cancel", command = obs_over)
+        cancelBtn.grid(row=1, column=0, pady=5)
+
+    def stop(master):
+        master.destroy() 
+
+def tkinterGui():
+    global cancel_obs
+    global btnCancel
+    cancel_obs = Tk()
+    app = Gui_cancel(cancel_obs)
+    btnCancel = True
+    cancel_obs.mainloop()
+
+def obs_over():
+    global end_obs
+  
+    end_obs = True
     
 def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, respawn=Respawn.CONCURRENT):
   
     global rsc
     global rscAvl
     global display
-       
+    global frame
     frame = Frame(root)
     frame.columnconfigure(1, weight=1)
     frame.columnconfigure(3, pad=5)
@@ -80,7 +108,6 @@ def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, respawn=Respawn.CONCURREN
     def submit_put():
         yield from put_cb()
 
-    
     @asyncio.coroutine
     def submit_post():
         yield from post_cb()
@@ -88,6 +115,22 @@ def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, respawn=Respawn.CONCURREN
     @asyncio.coroutine
     def submit_obs():
         yield from obs_cb()
+
+    @asyncio.coroutine
+    def submit_close():
+        Commands.do_exit()
+        os._exit(1)
+
+    @asyncio.coroutine
+    def submit_help():
+        Commands.do_help()
+        top = Toplevel()
+        
+        lbl = Label(top, text = 'Help!!!!') 
+        lbl.grid(row = 0, column = 0)   
+
+        closeBtn = Button(top, text = 'Close', command = top.destroy)  
+        closeBtn.grid(row = 1, column = 0)      
 
     rscLbl= Label (frame, text='Resources available: ')
     rscLbl.grid(row=0, column=0, padx=5, pady=5)
@@ -106,19 +149,16 @@ def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, respawn=Respawn.CONCURREN
     postBtn = Button(frame, text="Post", command = spawn(submit_post, respawn = respawn))
     postBtn.grid(row=3, column=3, pady=5)
 
-    obsBtn = Button(frame, text="Observe", command = spawn(submit_obs, respawn = respawn))
+    obsBtn = Button(frame, text="Observe", command = spawn(submit_obs, respawn = respawn, debug = False))
     obsBtn.grid(row=4, column=3, pady=5)
-
-    cancelBtn = Button(frame, text="Cancel")
-    cancelBtn.grid(row=5, column=3, pady=5)
          
     display = Text(frame, state="disabled")
     display.grid(row=1, column=0, columnspan=2, rowspan=6, padx=5, sticky=E+W+S+N)
         
-    helpBtn = Button(frame, text='Help', command = Commands.do_help)
+    helpBtn = Button(frame, text='Help', command = spawn (submit_help))
     helpBtn.grid(row=7, column=0, padx = 5, pady=5, sticky=W)
         
-    closeBtn = Button(frame, text='Close', command = Commands.do_exit)
+    closeBtn = Button(frame, text='Close', command = spawn(submit_close))
     closeBtn.grid(row=7, column=3, padx = 5, pady=5)
 
     update_resources(resource_list)
@@ -144,9 +184,10 @@ def update_resources(resources):
 def tk_app():
   
     global rscAvl
-
+    global resource_list
+    
     root = Tk()
-
+ 
     @asyncio.coroutine
     def set_get():
         print(rscAvl.get())
@@ -157,13 +198,17 @@ def tk_app():
         top = Toplevel()
 
         lab = Label(top, text='Define the parameter that you want to change')
-        lab.pack()
+        lab.grid(row = 0, column = 0, columnspan = 2,  pady=2, padx=2)
+
+        labMsg = Label(top, text='Parameter')
+        labMsg.grid(row = 1, column = 0)        
 
         msg = Entry(top)
-        msg.pack()
+        msg.grid(row = 1, column = 1, pady=2, padx=2)
 
-        confirmBtn = Button(top, text = 'Confirm', command = spawn(lambda: comb_func(top, msg.get())))
-        confirmBtn.pack()
+        confirmBtn = Button(top, text = 'Confirm', command = spawn(lambda: comb_func1(top, msg.get())))
+        confirmBtn.grid(row = 2, column = 0)
+        cancelBtn = Button(top, text = 'Cancel', command = spawn(lambda: close_popup(top))).grid(row = 2, column = 1)  
 
     @asyncio.coroutine
     def set_post():
@@ -200,9 +245,9 @@ def tk_app():
         adc  = Entry(top)
         adc.grid(row = 7, column = 1, pady = 2, padx = 2)
 
-        confirmBtn = Button(top, text = 'Confirm', command = spawn(lambda: do_post(name.get(), adc.get(), url.get(), obs.get(), freq.get(), maxEntry.get(), minEntry.get()))).grid(row = 8, column = 0)
+        confirmBtn = Button(top, text = 'Confirm', command = spawn(lambda: comb_func2(top, name.get(), adc.get(), url.get(), obs.get(), freq.get(), maxEntry.get(), minEntry.get()))).grid(row = 8, column = 0)
 
-        cancelBtn = Button(top, text = 'Cancel').grid(row = 8, column = 1)
+        cancelBtn = Button(top, text = 'Cancel', command = spawn(lambda: close_popup(top))).grid(row = 8, column = 1)
 
     @asyncio.coroutine
     def do_post(name, adc, url, obs, freq, maxLim, minLim):
@@ -212,7 +257,7 @@ def tk_app():
         for i in args:
             print("{} = {}".format(i, values[i]))
             if (i == 'adc') & (values[i] != ''):
-                post_attr += "-c {} ".format(int(values[i]))
+                post_attr += "-c{} ".format(int(values[i]))
             elif (i == 'url') & (values[i] != ''):
                post_attr += "-u {} ".format(values[i])
             elif (i == 'obs') & (values[i] == 1):
@@ -224,12 +269,18 @@ def tk_app():
             elif (i == 'minLim') & (values[i] != ''):
                 post_attr += "-l{} ".format(values[i])
           
-        print(post_attr)
-
         yield from Commands.do_add(name, '{}'.format(post_attr))
+        
+    @asyncio.coroutine
+    def comb_func2(top, name, adc, url, obs, freq, maxEntry, minEntry):
+
+        yield from close_popup(top)
+        yield from do_post(name, adc, url, obs, freq, maxEntry, minEntry)
+        resource_list.append(name)
+        update_resources(resource_list)
 
     @asyncio.coroutine
-    def comb_func(top, msg):
+    def comb_func1(top, msg):
 
         yield from close_popup(top)
         yield from do_put(msg)
@@ -240,17 +291,23 @@ def tk_app():
     
     @asyncio.coroutine
     def do_put(msg):
-
+        
         yield from Commands.do_resource(rscAvl.get(), 'PUT', msg)
 
     @asyncio.coroutine
     def set_obs():
-        print(rscAvl.get())
+        
+        global cancel
+        global btnCancel
+        if btnCancel == False:
+            cancel = threading.Thread(target=tkinterGui)
+            cancel.start()
         yield from Commands.do_resource(rscAvl.get(), 'GET', '-o')
-    
+
     gui_builder(root, set_get, set_obs, set_put, set_post, Respawn.CONCURRENT).pack()
 
     yield from async_mainloop(root)
+
 
 @asyncio.coroutine
 def run():
@@ -597,6 +654,7 @@ def incoming_data(response, url):
     """
     global jpayload
     global probing
+    global loop_obs
 
     jpayload = 0
     payload = response.payload.decode(UTF8)
@@ -619,11 +677,15 @@ def incoming_data(response, url):
             else:
                 insert_dataset(grp, url, create_comptype(jpayload))
                 print("All data will be stored in the HDF5 file")
-
+    
         except Exception as e:
             print("Failed to store in a dataset {}/ {}".format(url, e))
        
-def end_observation(loop):
+    if end_obs == True:
+        end_observation(loop_obs)    
+
+def end_observation(loop_obs):
+    global end_obs
     """
     Callback function used for ending observation to resource on client side.
 
@@ -634,12 +696,13 @@ def end_observation(loop):
     global graph
     print("Observation ended by user interrupt...")
     # Terminate observation event loop
-    loop.close()
+    loop_obs.close()
     graph = False
+    end_obs = False
     print("Observation loop ended in the client...")
-
+    insertText("Observation loop ended in the client...")
     # Restore event loop
-    asyncio.set_event_loop(client_event_loop)
+    #asyncio.set_event_loop(client_event_loop)
     print("Switched back to client console...")
 
 @asyncio.coroutine
@@ -804,7 +867,7 @@ class Commands():
         global status
         global switch_IP
         global gui
-        """
+        
         if power != 0:
             ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -812,7 +875,7 @@ class Commands():
             stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
             print("Second module disabled!")
             ssh.close() 
-        """
+        
         if status == 'main':
             h5_file.flush()
             with open('config {}.json'.format(server_IP)) as config_file:
@@ -832,6 +895,7 @@ class Commands():
         h5_file.close()
         print("Goodbye!")
         print("Exiting...")
+        os._exit(1)
         sys.exit(0)
 
     @staticmethod
@@ -884,7 +948,7 @@ class Commands():
             raise AttributeError("ADC Channel not found")
         else:
             try:
-                channel = int(options.channel)
+                channel = int(options.channel[:1])
             except ValueError as e:
                 raise ValueError("Channel must be integer")
 
@@ -941,6 +1005,7 @@ class Commands():
     @asyncio.coroutine
     def do_resource(name, code='GET', *args):
         global not_alert
+        global loop_obs
         not_alert = True
         global start
         start = 0
@@ -978,22 +1043,23 @@ class Commands():
                 if payload.startswith('-o'):
                     if resource['active'] is True:
                         # Create new event loop for observation
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
+                        loop_obs = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop_obs)
                         
                         try:
                             # Set keyboard interrupt Ctrl+c as method to end observation
                             for signame in ('SIGINT', 'SIGTERM'):
-                                loop.add_signal_handler(getattr(signal, signame),
-                                                        functools.partial(end_observation, loop))
+                                loop_obs.add_signal_handler(getattr(signal, signame),
+                                                        functools.partial(end_observation, loop_obs))
                             print("Observation running forever...")
                             print("Press Ctrl + c to end observation")
                             start = datetime.datetime.now()
-                            loop.run_until_complete(observe_impl(url))
+                            
+                            loop_obs.run_until_complete(observe_impl(url))
                         finally:
                             # In case of exceptions, must terminate observation loop and
                             #   switch back to client event loop
-                            loop.close()
+                            loop_obs.close()
                             not_alert = True
                             asyncio.set_event_loop(client_event_loop)
 
@@ -1012,93 +1078,6 @@ class Commands():
         except Exception as e:
             raise RuntimeError("Failed to complete CoAP request: {}".format(e))
   
-"""
-def client_console():
-
-    Client command line tool
-
-    Initialize as CoAP clients and try contacting server. While
-    connecting, accept commands and resource requests from command
-    line, then call corresponded CoAP request implementation
-
-    global grp
-    global graph
-    global obs_resource
-    global obs_activated
-    global power
-    global switch_IP
-    global probing
-    global resource_list
-    global app
-
-    resource_list = []
-    # Probe server first
-    print("\nConnecting to server {}...".format(server_IP))
-    #insertText("\nConnecting to server {}...".format(server_IP))
-    # Initialization will be blocked here if server not available
-    yield from Commands.do_probe()
-   
-    try:
-        grp = create_grouph5()
-    except Exception as e:
-        print("Failed to create HDF5 file{}".format(e))
-
-    print("\nProbing available resources...")
-    #insertText("Probing available resources...")
-    probing = True
-    for r in resources:
-        # Test GET for each known resource
-        yield from Commands.do_resource(r, 'GET')
-        print("Success! Resource {} is available at path /{}\n".format(r, resources[r]['url']))
-    print("Done probing...")
-    #insertText("Done probing...")
-    probing = False
-    # Print general info and help menu on console when client starts
-    if obs_activated == True:
-         yield from Commands.do_resource(obs_resource, 'GET', '-o')
-         
-    print("Initializing command prompt...\n")
-    Commands.do_help()
-    graph = False
-    #update_resources(resource_list)
-
-    # Start acquiring user input
-    while True:
-        cmdline = input(">>>")
-        cmd_parts = cmdline.split()
-        
-        # Handle empty input
-        if len(cmd_parts) is 0:
-            continue
-
-        #print("cmd = {}".format(cmd_parts))
-        cmd = cmd_parts[0]
-        args = cmd_parts[1:]
-       
-        try:
-            method = getattr(Commands, 'do_' + cmd)
-        except AttributeError:
-            if cmd in resources:
-                try:
-                    yield from Commands.do_resource(cmd, *args)
-                except Exception as e:
-                    print("Error: {}".format(e))
-            else:
-                print("Error: no such command.")
-
-        else:
-            try:
-                # do_help and do_ip and do_exit are not asyncio coroutine
-                if method.__name__ == 'do_help' or \
-                   method.__name__ == 'do_ip' or \
-                   method.__name__ == 'do_exit':
-                    method(*args)
-                else:
-                    yield from method(*args)
-            except Exception as e:
-                print("Error: {}".format(e))
-"""
-
 def main(argv):
     """
     Main function of the client program
@@ -1126,13 +1105,20 @@ def main(argv):
     global switch_IP
     global resource_list
     global gui
+    global end_obs
+    global btnCancel
+    global power 
+
 
     import argparse
-
+    
+    end_obs = False
     not_alert = True
+    btnCancel = False
     plotting, = plt.plot([], [])
     graph = False
-        	 
+    power = 0        
+	 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('-s', '--server_ip', help="IP of the required module")
     p.add_argument('-o', '--observe', help="Observate a required resource")
@@ -1147,7 +1133,7 @@ def main(argv):
     else:
         obs_activated = False 
     if obs_activated == True:
-        time.sleep(40)
+        time.sleep(45)
 
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))

@@ -65,41 +65,52 @@ class Gui_cancel(Frame):
 
     def __init__(self, master):
         global end_obs
-
+          
+        master.config(takefocus=True)
+        master.title("Cancel observation")
         end_obs = False
         lbl = Label(master, text = "To stop the observation, please press the button below")
         lbl.grid(row=0, column = 0, pady =5)
         cancelBtn = Button(master, text="Cancel", command = obs_over)
-        cancelBtn.grid(row=1, column=0, pady=5)
+        cancelBtn.grid(row=1, column=0, pady=5) 
 
-    def stop(master):
-        master.destroy() 
+    def hide(master):
+        master.withdraw()
+
+    def reveal(master):
+        master.deiconify()
 
 def tkinterGui():
     global cancel_obs
     global btnCancel
-    cancel_obs = Tk()
-    app = Gui_cancel(cancel_obs)
-    btnCancel = True
-    cancel_obs.mainloop()
+    global end_obs
+    if (end_obs == False) & (btnCancel == False):
+        cancel_obs = Tk()
+        app = Gui_cancel(cancel_obs)
+        btnCancel = True
+        cancel_obs.mainloop()
 
 def obs_over():
+
     global end_obs
-  
+    global Gui_cancel
+    global cancel_obs
+
+    Gui_cancel.hide(cancel_obs)
     end_obs = True
     
-def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, respawn=Respawn.CONCURRENT):
+def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, help_cb, respawn=Respawn.CONCURRENT):
   
     global rsc
     global rscAvl
     global display
-    global frame
+
     frame = Frame(root)
     frame.columnconfigure(1, weight=1)
-    frame.columnconfigure(3, pad=5)
+    frame.columnconfigure(2, pad=5)
     frame.rowconfigure(6, weight = 1) 
-    frame.rowconfigure(5, pad=5)       
-       
+    frame.rowconfigure(5, pad=5)    
+    
     @asyncio.coroutine
     def submit_get():
         yield from get_cb()
@@ -123,14 +134,7 @@ def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, respawn=Respawn.CONCURREN
 
     @asyncio.coroutine
     def submit_help():
-        Commands.do_help()
-        top = Toplevel()
-        
-        lbl = Label(top, text = 'Help!!!!') 
-        lbl.grid(row = 0, column = 0)   
-
-        closeBtn = Button(top, text = 'Close', command = top.destroy)  
-        closeBtn.grid(row = 1, column = 0)      
+        yield from help_cb()    
 
     rscLbl= Label (frame, text='Resources available: ')
     rscLbl.grid(row=0, column=0, padx=5, pady=5)
@@ -141,16 +145,16 @@ def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, respawn=Respawn.CONCURREN
     rscAvl.grid(row=0, column=1, pady=5, stick='w')
 
     getBtn = Button(frame, text="Get", command = spawn(submit_get, respawn = respawn))
-    getBtn.grid(row=1, column=3, pady=5)
+    getBtn.grid(row=1, column=2, pady=5)
 
     putBtn = Button(frame, text="Put", command = spawn(submit_put, respawn = respawn))
-    putBtn.grid(row=2, column=3, pady=5)
+    putBtn.grid(row=2, column=2, pady=5)
 
     postBtn = Button(frame, text="Post", command = spawn(submit_post, respawn = respawn))
-    postBtn.grid(row=3, column=3, pady=5)
+    postBtn.grid(row=3, column=2, pady=5)
 
     obsBtn = Button(frame, text="Observe", command = spawn(submit_obs, respawn = respawn, debug = False))
-    obsBtn.grid(row=4, column=3, pady=5)
+    obsBtn.grid(row=4, column=2, pady=5)
          
     display = Text(frame, state="disabled")
     display.grid(row=1, column=0, columnspan=2, rowspan=6, padx=5, sticky=E+W+S+N)
@@ -159,26 +163,12 @@ def gui_builder(root, get_cb, obs_cb, put_cb, post_cb, respawn=Respawn.CONCURREN
     helpBtn.grid(row=7, column=0, padx = 5, pady=5, sticky=W)
         
     closeBtn = Button(frame, text='Close', command = spawn(submit_close))
-    closeBtn.grid(row=7, column=3, padx = 5, pady=5)
+    closeBtn.grid(row=7, column=2, padx = 5, pady=5)
 
     update_resources(resource_list)
     insertText("Welcome to the Sensor network manager\n")         
 
     return frame
-
-def insertText(text):
-
-    global display
-
-    display.configure(state="normal")
-    display.insert(INSERT, '{}... \n'.format(text))
-    display.configure(state="disabled")
-
-def update_resources(resources):
-
-    global rscAvl
-
-    rscAvl.configure(values = resources)
 
 @asyncio.coroutine
 def tk_app():
@@ -187,7 +177,7 @@ def tk_app():
     global resource_list
     
     root = Tk()
- 
+    root.title("Sensor Network Manager") 
     @asyncio.coroutine
     def set_get():
         print(rscAvl.get())
@@ -196,7 +186,8 @@ def tk_app():
     @asyncio.coroutine
     def set_put():
         top = Toplevel()
-
+        top.title('Put - {}'.format(rscAvl.get()))
+         
         lab = Label(top, text='Define the parameter that you want to change')
         lab.grid(row = 0, column = 0, columnspan = 2,  pady=2, padx=2)
 
@@ -212,10 +203,12 @@ def tk_app():
 
     @asyncio.coroutine
     def set_post():
-        obs = IntVar()
-
-        top = Toplevel()
         
+        top = Toplevel()
+        top.title('Post')  
+
+        obs = IntVar()      
+
         lab = Label(top, text = 'New resource addition').grid(row = 0, column = 0, columnspan = 1)
 
         labName =  Label(top, text = 'Resource name').grid(row = 1, column = 0, padx = 2, pady = 2)
@@ -270,7 +263,59 @@ def tk_app():
                 post_attr += "-l{} ".format(values[i])
           
         yield from Commands.do_add(name, '{}'.format(post_attr))
+
+    @asyncio.coroutine
+    def set_help():
+
+        help_txt = '\nThis program is the graphic management interface of the sensor network system.\n Users can conveniently and securely control the system, collecting data from the different resources,\n configure sensor parameter or add new sensors using the Sensor Network Manager.\n'
+
+        help_rsc = 'All the available resources are displayed in the field at the top of the screen. \n To select one of them to manage, \nexpand the box clicking in the small arrow and click in the resource url. \n The resource selected can be modified at any time.\n'
+
+        help_get = 'The GET command collects data from the selected resource in the resources field, displaying the obtained results in the screen, \nshowing a graph with all the last obtained data and, finally, saving the results in the HDF5 database. \n Execute a GET command only returns one result, \nif it is necessary to collect more than one set of data check the Observe command.\n'
+       
+        help_put = 'The PUT command allows the changing of a parameter of the seleceted resource in the resources field.\n Clicking in this button, a new window will be displayed containing a field to insert the parameter and its new value. \n To complete the modification just press the button "Confirm" \nand a message will be displayed in the screen confirm the success of the modification. \n '
+
+        help_post = 'The POST command adds a new temporary resource, that can be accessed until the end of the application.\n Pressing the POST button a new window will be displayed, containing the following fields to be completed: \n Resource name - Name of the new resource\n Resource url - URL of the new resource that will be used by the management tools (Sensor Network Manager and Copper) for identification \n Observable - Defines observation status of the new resource \n Observe frequency - Defines the period of the observation in seconds \n Maximum and minimum limits: Define the measurement limits of the new resource \n ADC channel - Defines the number of the adc channel used by this new resource\n To complete the addition of the new resource just press the button "Confirm" \nand a message will be displayed in the screen confirm the success of the modification.'
+
+        help_obs = 'The OBSERVE command collects data from the selected resource in the resources field, \n obtaining results several times following a pre-configured frequency. \n The OBSERVE command execution is similar to the GET command, however additional features are executed and they are: \n Real-Time monitoring - Executing a observe command a real-time graphical visualization will be displayed, presenting no only all the past results, \nbut also the current collected data, maximum and minimum values and average.\n Smart power management - A observe command also triggers the smart power management, \na feature that automatically enable additonal modules in case of unexpected events that generates abnormal data.\n During the observation is not possible to execute any other function of the Sensor Network Manager. \n To stop an observation press the "Cancel" button in the additional pop-up.'
+ 
+        top = Toplevel()
+        top.title("Sensor Network Manager Help\n")
         
+        def help(title, txt):
+            lblRscTitle.config(text = title)
+            lblRsc.config(text = txt)
+            
+        lbl = Label(top, text = 'Welcome to the Sensor Network Manager', font = 'helvetica 12 bold')
+        lbl.grid(row = 0, column = 0, columnspan = 5)
+        
+        lblContent = Label(top, justify = 'center', text = help_txt)
+        lblContent.grid(row = 1, column = 0,  columnspan = 5)
+   
+        lblRscTitle = Label(top, font = "helvetica 10 bold")      
+        lblRscTitle.grid(row = 4,  column = 0,  columnspan = 5)    
+
+        lblRsc = Label(top, font = "helvetica 10", justify = 'center')      
+        lblRsc.grid(row = 5,  column = 0,  columnspan = 5)    
+        
+        btnLbl = Label(top, text = 'To obtain more information about the possible commands and features select use the buttons below\n')
+        btnLbl.grid(row = 2, column = 0,  columnspan = 5)
+         
+        rscBtn = Button(top, text = 'Resources', command  = lambda: help('\nResources', help_rsc))
+        rscBtn.grid(row = 3, column = 0)
+ 
+        getBtn = Button(top, text = 'Get', command  = lambda: help('\nCommands: Get', help_get))
+        getBtn.grid(row = 3, column = 1)
+
+        putBtn = Button(top, text = 'Put', command  = lambda: help('\nCommands: Put', help_put))
+        putBtn.grid(row = 3, column = 2)
+
+        postBtn = Button(top, text = 'Post', command  = lambda: help('\nCommands: Post', help_post))
+        postBtn.grid(row = 3, column = 3)
+
+        obsBtn = Button(top, text = 'Observe', command  = lambda: help('\nCommands: Observe', help_obs))
+        obsBtn.grid(row = 3, column = 4)
+
     @asyncio.coroutine
     def comb_func2(top, name, adc, url, obs, freq, maxEntry, minEntry):
 
@@ -299,15 +344,20 @@ def tk_app():
         
         global cancel
         global btnCancel
+        global Gui_cancel
+        global cancel_obs
+
         if btnCancel == False:
             cancel = threading.Thread(target=tkinterGui)
             cancel.start()
-        yield from Commands.do_resource(rscAvl.get(), 'GET', '-o')
+        else:
+            Gui_cancel.reveal(cancel_obs)
 
-    gui_builder(root, set_get, set_obs, set_put, set_post, Respawn.CONCURRENT).pack()
+        yield from Commands.do_resource(rscAvl.get(), 'GET', '-o')
+ 
+    gui_builder(root, set_get, set_obs, set_put, set_post, set_help, Respawn.CONCURRENT).pack()
 
     yield from async_mainloop(root)
-
 
 @asyncio.coroutine
 def run():
@@ -320,7 +370,6 @@ def run():
     global switch_IP
     global probing
     global resource_list
-    global app
     global display_text
  
     resource_list = []
@@ -356,10 +405,22 @@ def run():
     graph = False
  
     yield from tk_app()
-    
-                   
-def create_grouph5():
 
+def insertText(text):
+
+    global display
+
+    display.configure(state="normal")
+    display.insert(INSERT, '{}... \n'.format(text))
+    display.configure(state="disabled")
+
+def update_resources(resources):
+
+    global rscAvl
+
+    rscAvl.configure(values = resources)
+              
+def create_grouph5():
     """
     Create an HDF5 group with the ip of the controller module connected to the client
     If the module is already recorded in the database, the function just assign it to a HDF5 group 
@@ -421,7 +482,6 @@ def insert_dataset(grp, name, comp_type):
         print("Failed to create a dataset! {}".format(e))
 
 def store_data(dset, jpl):
-
     """
     Create a new tuple and store the obtained data from sensors in the datasets, identifying 
     the column by the json file received as response from the server. Also, enables the data     visualization and the smart power managent system.
@@ -527,7 +587,7 @@ def store_data(dset, jpl):
 
     now = datetime.datetime.now()
     diff = now-start
-    print(float(diff.total_seconds()))
+
     #Disable the additional model after 30 seconds (Need to include configurable time)
     if float(diff.total_seconds()) > timer:
           if status in 'additional':
@@ -548,23 +608,24 @@ def store_data(dset, jpl):
     
     print("Data successfully recorded in the database!")
 
-#Testing dynamic datatype formatting
-
 def create_comptype(jpl): 
     """
     Dynamic formatting for the compound type that defines the datatypes of the dataset columns
     """
     global temp_comptype
+
     data = json.loads(jpl['data']) 
     columns = []
     types = []
-    i=0
+    i = 0
     columns.extend([None]*len(jpl.keys()))
     types.extend([None]*len(jpl.keys()))
     a = []
+
     for x in range(0, len(jpl.keys())):
         a.append((str(x), 'i'))
     temp_comptype = numpy.dtype(a)
+
     for key in jpl.keys():
         if key == 'name':
             columns[i] = jpl[key] 
@@ -576,16 +637,17 @@ def create_comptype(jpl):
            types[i] = check_type(jpl[key])
            columns[i] = key
            i += 1 
+
     comp_type = temp_comptype.descr
     columns[len(jpl.keys())-1] = 'average'
     types[len(jpl.keys())-1] = 'f'
+
     for x in range(0, len(comp_type)):
         comp_type[x] = (columns[x], types[x])
     return comp_type
 
-# Check type of data
-#TODO: Check all possible datatypes available and include more formatting options
 def check_type(data):
+
     if type(data) is float:
         return 'f'
     elif type(data) is int:
@@ -629,19 +691,19 @@ def alert(data, dset):
                                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                                 ssh.connect(switch_IP, username='group94', password = 'upoe94')
                                 stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe.tcl")
-                                print("Second module enabled!")
+                                insertText("Second module enabled!")
                                 ssh.close() 
-
                                 add_num = len(config['server']['additional modules'])
+
                                 if add_num == 1:
                                     ip = config['server']['additional modules'][0]['ip']
                                     terminal = subprocess.Popen(['gnome-terminal', '-x', 'python3', 'mod_client_stdioV2.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
                                 else:
+
                                     for y in range(0, add_num-1):
                                         ip = config['server']['additional modules'][y]['ip']
                                         terminal = subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdioV2.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
-                            
-                            
+                                
                             return False
     return True
 
@@ -658,6 +720,7 @@ def incoming_data(response, url):
 
     jpayload = 0
     payload = response.payload.decode(UTF8)
+
     if (response.opt.content_format is not JSON_FORMAT_CODE):
         print("Result:\n{}: {}".format(response.code, payload))
         if probing == False:
@@ -685,7 +748,7 @@ def incoming_data(response, url):
         end_observation(loop_obs)    
 
 def end_observation(loop_obs):
-    global end_obs
+
     """
     Callback function used for ending observation to resource on client side.
 
@@ -693,17 +756,17 @@ def end_observation(loop_obs):
     """
     # FIXME: method should actually end observation on server.
     #       Now, it only deals with client side
+
     global graph
+    global end_obs
+
     print("Observation ended by user interrupt...")
     # Terminate observation event loop
     loop_obs.close()
     graph = False
     end_obs = False
-    print("Observation loop ended in the client...")
+    
     insertText("Observation loop ended in the client...")
-    # Restore event loop
-    #asyncio.set_event_loop(client_event_loop)
-    print("Switched back to client console...")
 
 @asyncio.coroutine
 def post_impl(jargs, url):
@@ -787,6 +850,7 @@ def observe_impl(url=''):
     requester = context.request(request)
     requester.observation.register_errback(observation_is_over.set_result)
     requester.observation.register_callback(lambda data: incoming_data(data, url))
+
     try:
         response_data = yield from requester.response
     except socket.gaierror as e:
@@ -1030,14 +1094,14 @@ class Commands():
         :raises ValueError: invalid request code (not GET or PUT)
         :raises RuntimeError: CoAP request failed
         """
-
         payload = " ".join(args)
+
         try:
             resource = resources[name]
             url = resource['url']
         except AttributeError and IndexError as e:
             raise AttributeError("Resource name or url not found: {}".format(e))
-        #print("do_resource: payload={}".format(payload))
+
         try:
             if code == 'GET':
                 if payload.startswith('-o'):
@@ -1127,11 +1191,13 @@ def main(argv):
    
     if options.server_ip:
         server_IP = options.server_ip
+
     if options.observe:
         obs_activated = True  
         obs_resource = options.observe
     else:
         obs_activated = False 
+
     if obs_activated == True:
         time.sleep(45)
 
@@ -1167,17 +1233,14 @@ def main(argv):
     try:
         h5_file = h5py.File("{}.hdf5".format(server_IP), "a")
         print("HDF5 File succefully created or accessed")
-        #insertText("HDF5 File succefully created or accessed")
     except Exception as e:
         print("An error ocurred opening or creating the HDF5 file {}".format(e))
   
-    #print("{}".format(resources))
     try:
         loop = asyncio.get_event_loop()
         # Keep a global record of the event loop for client
         client_event_loop = loop
         # Start client console
-        
         loop.run_until_complete(run())
        
     except Exception as e:

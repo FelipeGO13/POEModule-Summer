@@ -132,15 +132,6 @@
      "min": -3,
      "max": 3,
      "channel": 3
-    },
-    {
-     "name": "JoyY",
-     "url": "joystick/y",
-     "active": true,
-     "period": 3,
-     "min": -3,
-     "max": 3,
-     "channel": 4
     }
   ]
 }

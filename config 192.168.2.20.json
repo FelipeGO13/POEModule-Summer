@@ -1,7 +1,8 @@
 {
   "server": {
+    "switch IP": "192.168.2.100",
     "IP": "192.168.2.20",
-    "visualization time": 30,
+    "visualization time": 180,
     "status": "main",
     "additional modules": [
     {"ip": "192.168.2.30", "port": "2/5"}
@@ -15,9 +16,7 @@
     }
   },
   "client": {
-    "name": "myLaptop",
-    "datafile": "data.txt",
-    "demo": true
+    "name": "myLaptop"
   },
   "sensors": [
     {
@@ -143,6 +142,12 @@
      "min": -3,
      "max": 3,
      "channel": 4
+    },
+    {
+     "name": "Motion",
+     "url": "motion",
+     "active": true,
+     "period": 3
     }
   ]
 }

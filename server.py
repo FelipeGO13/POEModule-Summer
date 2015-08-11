@@ -48,25 +48,26 @@ def main():
     with open('/home/pi/POEModule-master/POEModule-master/config.json') as data_file:
         server = json.load(data_file)
         sensor_list = server['sensors']
-   
-    poe_config = open('/home/pi/POEModule-master/POEModule-master/poe_test.tcl', 'w+')
-    for mod in server['server']['additional modules']:
-        poe_config.write('ios_config "interface gi {}" "power inline four-pair forced" "shutdown" "no shutdown"\n'.format(mod['port']))
-        poe_config.write('exec "show power inline gi {}"\n'.format(mod['port']))       
-    poe_config.close()    
-    try:
-        child = pexpect.spawn('scp %s %s@%s:%s' % ('/home/pi/POEModule-master/POEModule-master/poe_test.tcl', 'group94', '192.168.2.100', 'poe_test.tcl'))
-        i = child.expect(['Password:', r"yes/no"], timeout=30)
-        if i == 0:
-            child.sendline('upoe94')
-        elif i == 1:
-            child.sendline("yes")
-            child.expect("Password:", timeout=30)
-            child.sendline('upoe94')
-        data = child.read()
-        child.close()
-    except Exception as e:
-        print("TCL file transference failed")
+        status = server['server']['status']
+    if status == 'main':
+        poe_config = open('/home/pi/POEModule-master/POEModule-master/poe_test.tcl', 'w+')
+        for mod in server['server']['additional modules']:
+            poe_config.write('ios_config "interface gi {}" "power inline four-pair forced" "shutdown" "no shutdown"\n'.format(mod['port']))
+            poe_config.write('exec "show power inline gi {}"\n'.format(mod['port']))       
+        poe_config.close()    
+        try:
+            child = pexpect.spawn('scp %s %s@%s:%s' % ('/home/pi/POEModule-master/POEModule-master/poe_test.tcl', 'group94', '192.168.2.100', 'poe_test.tcl'))
+            i = child.expect(['Password:', r"yes/no"], timeout=30)
+            if i == 0:
+                child.sendline('upoe94')
+            elif i == 1:
+                child.sendline("yes")
+                child.expect("Password:", timeout=30)
+                child.sendline('upoe94')
+            data = child.read()
+            child.close()
+        except Exception as e:
+            print("TCL file transference failed")
 
     for sensor in sensor_list:
         # Known sensors that has been pre-defined

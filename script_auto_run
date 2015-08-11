@@ -1,0 +1,4 @@
+#!/POEModule-master/POEModule-master/bash
+# Script to start our application
+echo "Doing autorun script..."
+sudo /opt/python3.4/bin/python3.4 /home/pi/POEModule-master/POEModule-Master/server.py &

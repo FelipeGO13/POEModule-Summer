@@ -95,7 +95,11 @@ def obs_over():
     global end_obs
     global Gui_cancel
     global cancel_obs
-
+    global terminal
+    global add_term
+    if add_term:
+        terminal.terminate()
+    
     Gui_cancel.hide(cancel_obs)
     end_obs = True
     
@@ -180,7 +184,7 @@ def tk_app():
     root.title("Sensor Network Manager") 
     @asyncio.coroutine
     def set_get():
-        print(rscAvl.get())
+       
         yield from Commands.do_resource(rscAvl.get())
 
     @asyncio.coroutine
@@ -370,8 +374,7 @@ def run():
     global switch_IP
     global probing
     global resource_list
-    global display_text
- 
+
     resource_list = []
 
     probing = True
@@ -411,7 +414,7 @@ def insertText(text):
     global display
 
     display.configure(state="normal")
-    display.insert(INSERT, '{}... \n'.format(text))
+    display.insert(END, '{}... \n'.format(text))
     display.configure(state="disabled")
 
 def update_resources(resources):
@@ -499,10 +502,13 @@ def store_data(dset, jpl):
     global power
     global status
     global switch_IP
-
+ 
     # Indicates when the alert is activated (True = Alert off/ False = Alert on)
     not_alert = True
     port = '2/5'
+    avg = 0
+    is_num = False
+    
     with open('config {}.json'.format(server_IP)) as config_file:
         config = json.load(config_file)
         length = len(config['sensors'])
@@ -512,18 +518,30 @@ def store_data(dset, jpl):
         for x in range(0, length-1):
             if jpl['name'] == config['sensors'][x]['name']:
                 sensor = config['sensors'][x]
-				
+
+    data = json.loads(jpl['data']) 
+   
+    try:
+        float(data[jpl['name']])
+        is_num= True
+    except:
+        is_num = False
+
     # Creates the data visualization if it is not enabled
-    if graph == False:
+    if (graph == False) & (is_num):
 	# Plots the data visualization
         plt.figure(1)
         plotting, = plt.plot(dset[jpl['name']], color='black')
-        plt.ylim([(sensor['min_limit']*2), (sensor['max_limit']*2)])
         plt.xlabel("Number of measurements")
         plt.ylabel(jpl['name'])
         plt.title("Real-Time Visualization {}".format(server_IP))
-        plt.axhline(y=sensor['max_limit'], c='red')
-        plt.axhline(y=sensor['min_limit'], c='red')
+        try:
+            plt.ylim([(sensor['min_limit']*2), (sensor['max_limit']*2)])
+           
+            plt.axhline(y=sensor['max_limit'], c='red')
+            plt.axhline(y=sensor['min_limit'], c='red')
+        except:
+            insertText("No maximum and/or minimum limit fot this resource") 
         ax = plt.gca()
         
         textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[jpl['name']]), max(dset[jpl['name']]), min(dset[jpl['name']])) 
@@ -533,16 +551,14 @@ def store_data(dset, jpl):
         plt.show(block=False)
         graph = True
 
-    data = json.loads(jpl['data']) 
-    avg = 0
-
     for key in jpl.keys():
         if key == 'data':
             for key in data.keys():
 			
                 dset[key, dset.len()-1] = data[jpl['name']]
-                avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
-                avg = float(avg_trunc)
+                if is_num:
+                   avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
+                   avg = float(avg_trunc)
                 
                 if status == 'main':
 		    # Connect to switch and reads the power available in the second module
@@ -567,22 +583,23 @@ def store_data(dset, jpl):
                 else:
                     next = plotting.get_xdata()+1
 
-                plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
-                plotting.set_xdata(numpy.insert(plotting.get_xdata(), (next-1), next))
+                if is_num:
+                    plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
+                    plotting.set_xdata(numpy.insert(plotting.get_xdata(), (next-1), next))
                
-                ax.relim()
-                ax.autoscale_view()
-                
-                textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[key]), max(dset[key]), min(dset[key])) 
-                text.set_text(textstr)
-                plt.draw()
+                    ax.relim()
+                    ax.autoscale_view()
+                    textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[key]), max(dset[key]), min(dset[key])) 
+                    text.set_text(textstr)
+                    plt.draw()
         else: 
             try:          
                 dset['{}'.format(key), dset.len()-1] = jpl[key]
             except Exception as e: 
                 print('') 
 
-    dset['average', dset.len()-1] = avg       
+    dset['average', dset.len()-1] = avg  
+
     dset.resize(dset.len()+1, 0)
 
     now = datetime.datetime.now()
@@ -591,7 +608,7 @@ def store_data(dset, jpl):
     #Disable the additional model after 30 seconds (Need to include configurable time)
     if float(diff.total_seconds()) > timer:
           if status in 'additional':
-              print('finishing data collection')
+              insertText('Finishing data collection...')
               h5_file.close()
               sys.exit(0)
           else:
@@ -599,14 +616,14 @@ def store_data(dset, jpl):
               ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
               ssh.connect(switch_IP, username='group94', password = 'upoe94')
               stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
-              print("Second module disabled!")
-              terminal.kill()
+              insertText('Second module disabled!')
+              terminal.terminate()
               ssh.close() 
               start = datetime.datetime.now()
     else:
-        print("Second module still working")
-    
-    print("Data successfully recorded in the database!")
+       if power != 0:
+           insertText('Second module still working')
+    insertText('Data successfully recorded in the database!')
 
 def create_comptype(jpl): 
     """
@@ -674,7 +691,8 @@ def alert(data, dset):
     global text
     global obs_resource
     global terminal
-    
+    global add_term
+
     with open('config {}.json'.format(server_IP)) as config_file:
         config = json.load(config_file)
         length = len(config['sensors'])     
@@ -685,7 +703,7 @@ def alert(data, dset):
                     obs_resource = key
                     if dset.attrs.__contains__(key):
                         if (float(data[key]) > sensor['max_limit']) | (float(data[key]) < sensor['min_limit']):
-                            print('Alert activated!')
+                            insertText('Alert activated!')
                             if status == 'main':
                                 ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
                                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -703,7 +721,7 @@ def alert(data, dset):
                                     for y in range(0, add_num-1):
                                         ip = config['server']['additional modules'][y]['ip']
                                         terminal = subprocess.Popen(['gnome-terminal', '-x','python3', 'mod_client_stdioV2.py', '-s', '{}'.format(ip), '-o', '{}'.format(obs_resource)])
-                                
+                            add_term = True    
                             return False
     return True
 
@@ -742,7 +760,7 @@ def incoming_data(response, url):
                 print("All data will be stored in the HDF5 file")
     
         except Exception as e:
-            print("Failed to store in a dataset {}/ {}".format(url, e))
+            insertText("Failed to store in a dataset {}/ {}".format(url, e))
        
     if end_obs == True:
         end_observation(loop_obs)    
@@ -760,7 +778,6 @@ def end_observation(loop_obs):
     global graph
     global end_obs
 
-    print("Observation ended by user interrupt...")
     # Terminate observation event loop
     loop_obs.close()
     graph = False
@@ -796,6 +813,9 @@ def get_impl(url=''):
     :param str url: url to locate resource
     :raises RuntimeError: incorrect Context for client
     """
+    global graph
+    graph = False   
+
     context = yield from Context.create_client_context()
     request = Message(code=GET)
     request.set_request_uri('coap://{}/{}'.format(server_IP, url))
@@ -863,7 +883,7 @@ def observe_impl(url=''):
        raise RuntimeError("Observation failed!")
             
     exit_reason = yield from observation_is_over
-    print("Observation exits due to {}".format(exit_reason))
+    insertText("Observation exits due to {}".format(exit_reason))
 
 class Commands():
     """
@@ -892,8 +912,7 @@ class Commands():
             print("Valid resources: " + ", ".join(resources))
             resource_str = ", ".join(resources)
             resource_list = resource_str.split(", ")
-            print("\n'help [command]' or 'help resource' for more details\n")
-
+            
     @staticmethod
     def do_ip(ip=None):
         """
@@ -937,7 +956,7 @@ class Commands():
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(switch_IP, username='group94', password = 'upoe94')
             stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
-            print("Second module disabled!")
+            insertText("Second module disabled!")
             ssh.close() 
         
         if status == 'main':
@@ -945,20 +964,24 @@ class Commands():
             with open('config {}.json'.format(server_IP)) as config_file:
                 config = json.load(config_file)
                 add_num = len(config['server']['additional modules'])
-                if add_num == 1:
-                    ip = config['server']['additional modules'][0]['ip']
-                    add_file = h5py.File("{}.hdf5".format(ip), "a")
-                    subprocess.call(['h5merge','-i','{}'.format(add_file.filename), '-o', '{}'.format(h5_file.filename)])
-                    os.remove("{}.hdf5".format(ip))
-                else:
-                    for y in range(0, add_num-1):
-                        ip = config['server']['additional modules'][y]['ip']
-                        add_file = h5py.File("{}.hdf5".format(ip), "a")
-                        subprocess.call(['h5merge','-i','{}'.format(add_file.filename), '-o', '{}'.format(h5_file.filename)])
+                try:
+                    if add_num == 1:                  
+                        ip = config['server']['additional modules'][0]['ip']
+                        subprocess.call(['h5merge','-i','{}.hdf5'.format(ip), '-o', '{}'.format(h5_file.filename)])
                         os.remove("{}.hdf5".format(ip))
+                    else:
+                        for y in range(0, add_num-1):
+                            ip = config['server']['additional modules'][y]['ip']
+                            subprocess.call(['h5merge','-i','{}.hdf5'.format(ip), '-o', '{}'.format(h5_file.filename)])
+                            os.remove("{}.hdf5".format(ip))
+                except:
+                    h5_file.close()
+                    os._exit(1)
+                    sys.exit(0)  
+  
         h5_file.close()
-        print("Goodbye!")
-        print("Exiting...")
+        insertText("Goodbye!")
+        insertText("Exiting...")
         os._exit(1)
         sys.exit(0)
 
@@ -1172,7 +1195,7 @@ def main(argv):
     global end_obs
     global btnCancel
     global power 
-
+    global add_term
 
     import argparse
     
@@ -1182,7 +1205,8 @@ def main(argv):
     plotting, = plt.plot([], [])
     graph = False
     power = 0        
-	 
+    add_term = False 
+ 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('-s', '--server_ip', help="IP of the required module")
     p.add_argument('-o', '--observe', help="Observate a required resource")
@@ -1199,7 +1223,7 @@ def main(argv):
         obs_activated = False 
 
     if obs_activated == True:
-        time.sleep(45)
+        time.sleep(50)
 
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))

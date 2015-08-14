@@ -31,6 +31,7 @@ import datetime
 import paramiko
 import os
 import subprocess
+import atexit
 import matplotlib.pylab as plt
 
 from aiocoap import *
@@ -118,6 +119,7 @@ def store_data(dset, jpl):
     Create a new tuple and store the obtained data from sensors in the datasets, identifying 
     the column by the json file received as response from the server. Also, enables the data     visualization and the smart power managent system.
     """
+
     global not_alert
     global plotting
     global ax
@@ -134,6 +136,8 @@ def store_data(dset, jpl):
     # Indicates when the alert is activated (True = Alert off/ False = Alert on)
     not_alert = True
     port = '2/5'
+    avg = 0
+    is_num = False
     with open('config {}.json'.format(server_IP)) as config_file:
         config = json.load(config_file)
         length = len(config['sensors'])
@@ -143,9 +147,17 @@ def store_data(dset, jpl):
         for x in range(0, length-1):
             if jpl['name'] == config['sensors'][x]['name']:
                 sensor = config['sensors'][x]
-				
+
+    data = json.loads(jpl['data']) 
+   
+    try:
+        float(data[jpl['name']])
+        is_num= True
+    except:
+        is_num = False
+
     # Creates the data visualization if it is not enabled
-    if graph == False:
+    if (graph == False) & (is_num):
 	# Plots the data visualization
         plt.figure(1)
         plotting, = plt.plot(dset[jpl['name']], color='black')
@@ -164,16 +176,14 @@ def store_data(dset, jpl):
         plt.show(block=False)
         graph = True
 
-    data = json.loads(jpl['data']) 
-    avg = 0
-
     for key in jpl.keys():
         if key == 'data':
             for key in data.keys():
 			
                 dset[key, dset.len()-1] = data[jpl['name']]
-                avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
-                avg = float(avg_trunc)
+                if is_num:
+                   avg_trunc = "%.4f"%numpy.around(numpy.mean(dset[key]), decimals=4)
+                   avg = float(avg_trunc)
                 
                 if status == 'main':
 		    # Connect to switch and reads the power available in the second module
@@ -198,27 +208,28 @@ def store_data(dset, jpl):
                 else:
                     next = plotting.get_xdata()+1
 
-                plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
-                plotting.set_xdata(numpy.insert(plotting.get_xdata(), (next-1), next))
+                if is_num:
+                    plotting.set_ydata(numpy.append(plotting.get_ydata(), data[jpl['name']]))
+                    plotting.set_xdata(numpy.insert(plotting.get_xdata(), (next-1), next))
                
-                ax.relim()
-                ax.autoscale_view()
-                
-                textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[key]), max(dset[key]), min(dset[key])) 
-                text.set_text(textstr)
-                plt.draw()
+                    ax.relim()
+                    ax.autoscale_view()
+                    textstr = 'Average = %.2f\nMaximum=%.2f\nMinimum=%.2f'%(numpy.mean(dset[key]), max(dset[key]), min(dset[key])) 
+                    text.set_text(textstr)
+                    plt.draw()
         else: 
             try:          
                 dset['{}'.format(key), dset.len()-1] = jpl[key]
             except Exception as e: 
                 print('') 
 
-    dset['average', dset.len()-1] = avg       
+    dset['average', dset.len()-1] = avg  
+
     dset.resize(dset.len()+1, 0)
 
     now = datetime.datetime.now()
     diff = now-start
-    print(float(diff.total_seconds()))
+
     #Disable the additional model after 30 seconds (Need to include configurable time)
     if float(diff.total_seconds()) > timer:
           if status in 'additional':
@@ -231,7 +242,7 @@ def store_data(dset, jpl):
               ssh.connect(switch_IP, username='group94', password = 'upoe94')
               stdin, stdout, stderr = ssh.exec_command("tclsh bootflash:poe_shutdown.tcl")
               print("Second module disabled!")
-              terminal.kill()
+              terminal.terminate()
               ssh.close() 
               start = datetime.datetime.now()
     else:
@@ -561,14 +572,14 @@ class Commands():
                 add_num = len(config['server']['additional modules'])
                 if add_num == 1:
                     ip = config['server']['additional modules'][0]['ip']
-                    add_file = h5py.File("{}.hdf5".format(ip), "a")
-                    subprocess.call(['h5merge','-i','{}'.format(add_file.filename), '-o', '{}'.format(h5_file.filename)])
+                    #add_file = h5py.File("{}.hdf5".format(ip), "a")
+                    subprocess.call(['h5merge','-i','{}.hdf5'.format(ip), '-o', '{}'.format(h5_file.filename)])
                     os.remove("{}.hdf5".format(ip))
                 else:
                     for y in range(0, add_num-1):
                         ip = config['server']['additional modules'][y]['ip']
-                        add_file = h5py.File("{}.hdf5".format(ip), "a")
-                        subprocess.call(['h5merge','-i','{}'.format(add_file.filename), '-o', '{}'.format(h5_file.filename)])
+                        #add_file = h5py.File("{}.hdf5".format(ip), "a")
+                        subprocess.call(['h5merge','-i','{}.hdf5'.format(ip), '-o', '{}'.format(h5_file.filename)])
                         os.remove("{}.hdf5".format(ip))
         h5_file.close()
         print("Goodbye!")
@@ -867,6 +878,8 @@ def main(argv):
     graph = False
     power = 0
  
+    exit_handler(exit)
+ 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('-s', '--server_ip', help="IP of the required module")
     p.add_argument('-o', '--observe', help="Observate a required resource")
@@ -881,7 +894,7 @@ def main(argv):
     else:
         obs_activated = False 
     if obs_activated == True:
-        time.sleep(40)
+        time.sleep(45)
 
     try:
         ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
@@ -917,8 +930,6 @@ def main(argv):
         print("HDF5 File succefully created or accessed")
     except:
         print("An error ocurred opening or creating the HDF5 file")
-  
-    #print("{}".format(resources))
 
     try:
         loop = asyncio.get_event_loop()
@@ -930,5 +941,20 @@ def main(argv):
     except Exception as e:
         print("{}".format(e))
 
+def exit():
+    file = open('test', 'a')
+    h5_file.flush()
+    h5_file.close()
+
+def signal_handler(signum, frame):
+    sys.exit(0)
+
+def exit_handler(func):
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGHUP, signal_handler)
+    atexit.register(func)    
+   
 if __name__ == '__main__':
     main(sys.argv[1:])
+    

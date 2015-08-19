@@ -33,6 +33,7 @@ import os
 import subprocess
 import inspect
 import threading
+import atexit
 import matplotlib.pylab as plt
 
 from tkinter import *
@@ -97,7 +98,8 @@ def obs_over():
     global cancel_obs
     global terminal
     global add_term
-    if add_term:
+    global status
+    if add_term & (status == 'main'):
         terminal.terminate()
     
     Gui_cancel.hide(cancel_obs)
@@ -561,16 +563,18 @@ def store_data(dset, jpl):
                    avg = float(avg_trunc)
                 
                 if status == 'main':
-		    # Connect to switch and reads the power available in the second module
-                    ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
-                    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                    ssh.connect(switch_IP, username='group94', password = 'upoe94')
-                    stdin, stdout, stderr = ssh.exec_command("show power inline gi {}".format(port))
-                    power = float(stdout.read()[310: 320])
-                    ssh.close() 
-                else:
-                    power = 0
-
+                    try:
+		        # Connect to switch and reads the power available in the second module
+                        ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+                        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                        ssh.connect(switch_IP, username='group94', password = 'upoe94')
+                        stdin, stdout, stderr = ssh.exec_command("show power inline gi {}".format(port))
+                        power = float(stdout.read()[310: 320])
+                        ssh.close() 
+                    except:
+                        print("Switch not available")
+                        power = 0
+  
 	        #Checks if alert is on, otherwise verify if data is in the normal range
                 if (not_alert is True) & (power == 0) :
                     not_alert = alert(data, dset)  
@@ -1206,6 +1210,8 @@ def main(argv):
     graph = False
     power = 0        
     add_term = False 
+     
+    exit_handler(exit)
  
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('-s', '--server_ip', help="IP of the required module")
@@ -1269,6 +1275,19 @@ def main(argv):
        
     except Exception as e:
         print("{}".format(e))
+
+def exit():
+    h5_file.flush()
+    h5_file.close()
+
+def signal_handler(signum, frame):
+    sys.exit(0)
+
+def exit_handler(func):
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGHUP, signal_handler)
+    atexit.register(func)    
 
 if __name__ == '__main__':
     main(sys.argv[1:])

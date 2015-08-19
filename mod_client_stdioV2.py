@@ -942,7 +942,6 @@ def main(argv):
         print("{}".format(e))
 
 def exit():
-    file = open('test', 'a')
     h5_file.flush()
     h5_file.close()
 
